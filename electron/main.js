@@ -194,9 +194,9 @@ function migrateLegacyAppData() {
         .replace(new RegExp(escapeRegExp(legacyDirName), 'g'), branding.appDataDir);
       fs.writeFileSync(envPath, txt, 'utf8');
     }
-    process.stdout.write(`Migrated legacy AppData ${oldDir} -> ${newDir}\n`);
+    plog(`Migrated legacy AppData ${oldDir} -> ${newDir}`);
   } catch (e) {
-    try { process.stdout.write('migrateLegacyAppData failed: ' + e.message + '\n'); } catch (_) {}
+    plog('migrateLegacyAppData failed: ' + e.message);
   }
 }
 
@@ -225,16 +225,16 @@ function migrateChromiumUserData(target) {
     // "合成一个"就等于没做。这里删的是 Chromium 的缓存/Cookie/LocalStorage：
     // 已经完整拷到新位置，即便真丢了最坏也只是重登一次。与 migrateLegacyAppData
     // 保留老目录的取舍不同——那边是会话数据，丢不起。
-    process.stdout.write(`Merged Chromium userData ${legacy} -> ${target}\n`);
+    plog(`Merged Chromium userData ${legacy} -> ${target}`);
     try {
       fs.rmSync(legacy, { recursive: true, force: true });
-      process.stdout.write(`Removed legacy Chromium userData ${legacy}\n`);
+      plog(`Removed legacy Chromium userData ${legacy}`);
     } catch (e) {
       // 删不掉（被占用等）不影响功能，只是多一个目录。
-      process.stdout.write('Removed legacy Chromium userData failed: ' + e.message + '\n');
+      plog('Removed legacy Chromium userData failed: ' + e.message);
     }
   } catch (e) {
-    try { process.stdout.write('migrateChromiumUserData failed: ' + e.message + '\n'); } catch (_) {}
+    plog('migrateChromiumUserData failed: ' + e.message);
   }
 }
 
@@ -499,6 +499,16 @@ function saveTelemetryQueue(q) {
 // Captures backend stdout/stderr before Python's own logger starts.
 // Written to %APPDATA%\<branding.appDataDir>\logs\electron.log
 
+//: ready 之前产生的日志。**这一段是黑区** —— 目录迁移跑在 openElectronLog() 之前，
+//: 而打包态没有控制台，process.stdout.write 写出去就没了。今天"会话没迁过来"、
+//: "AppData 下还是两个目录"都发生在这一段里，而日志上一个字都没有，只能靠猜。
+const preLogBuffer = [];
+
+function plog(line) {
+  preLogBuffer.push(line);
+  try { process.stdout.write(line + '\n'); } catch (_) {}
+}
+
 function openElectronLog() {
   try {
     const logsDir = path.join(getAppDataDir(), 'logs');
@@ -508,6 +518,10 @@ function openElectronLog() {
     electronLogStream = fs.createWriteStream(logPath, { flags: 'a' });
     const ts = new Date().toISOString();
     electronLogStream.write(`\n${'='.repeat(60)}\n[${ts}] ${branding.productName} started\n`);
+    // 把 ready 之前攒下的补进来 —— 否则迁移那几步永远查不到。
+    for (const line of preLogBuffer.splice(0)) {
+      electronLogStream.write(`[${ts}] ${line}\n`);
+    }
     return logPath;
   } catch (e) {
     return null;

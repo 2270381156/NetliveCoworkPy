@@ -37,11 +37,14 @@
   ;      正是最常见的情况 —— 所以先判个数。
   ;   2. `$$p` 在 NSIS 里才输出字面量 `$p`；写成 `$p` 会被 NSIS 当成自己的变量吃掉。
   ;      `$INSTDIR` 则是真的要 NSIS 展开，故不转义。
+  DetailPrint "关闭 ${_dir} 下的进程…"
   nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p = @(Get-Process -ErrorAction SilentlyContinue | Where-Object Path -like '${_dir}\*'); if ($$p.Count) { [void]$$p.CloseMainWindow() }"`
   Pop $R6
+  DetailPrint "  请求正常退出：退出码 $R6"
   Sleep 2000
   nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Process -ErrorAction SilentlyContinue | Where-Object Path -like '${_dir}\*' | Stop-Process -Force"`
   Pop $R6
+  DetailPrint "  强制结束：退出码 $R6"
   Sleep 500
 !macroend
 
@@ -70,7 +73,12 @@
     StrCmp $R2 "" ipmc_pred_done_${_root}
     IntOp $R1 $R1 + 1
     ReadRegStr $R3 ${_root} "${IPMC_UNINST_ROOT}\$R2" "DisplayName"
-    StrCmp $R3 "${IPMC_LEGACY_PRODUCT}" 0 ipmc_pred_loop_${_root}
+    ; ⚠ **按前缀比，不能用全等。** 实测注册表里写的是 "IPMaster-Cowork 0.5.6" ——
+    ; electron-builder 会把版本号缀在 DisplayName 后面。全等匹配永远不成立，
+    ; 而且**静默跳过**：安装照常完成，上一代原封不动留着，谁也不知道这段没跑。
+    StrLen $R7 "${IPMC_LEGACY_PRODUCT}"
+    StrCpy $R6 $R3 $R7
+    StrCmp $R6 "${IPMC_LEGACY_PRODUCT}" 0 ipmc_pred_loop_${_root}
 
     ; 命中前代。先关它的进程——按安装目录筛，所以不必关心它的进程名叫什么
     ; （旧的是 IPMaster-Cowork.exe，新的是 electron.exe）。
@@ -87,7 +95,13 @@
     ; 卸载会改注册表，枚举下标已经不可靠了——从头再来一遍。
     StrCpy $R1 0
     Goto ipmc_pred_loop_${_root}
+  Goto ipmc_pred_end_${_root}
   ipmc_pred_done_${_root}:
+    ; **没命中也要说。** 上一版这里什么都不打，而匹配条件恰好是错的
+    ; （注册表里是 "IPMaster-Cowork 0.5.6"，带版本号后缀，全等匹配永不成立），
+    ; 于是安装照常完成、上一代原封不动留着，日志里一个字都没有。
+    DetailPrint "${_root}: 没找到上一代 ${IPMC_LEGACY_PRODUCT}（无需卸载）"
+  ipmc_pred_end_${_root}:
 !macroend
 
 !macro customInit

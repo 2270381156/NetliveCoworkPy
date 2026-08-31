@@ -264,12 +264,25 @@ if (-not $SkipBackend) {
 
   # uv 下载/缓存 PBS 并校验；--install-dir 让布局可预测，便于定位 python.exe
   $PyStore = Join-Path $BuildDir "py-runtime-store"
-  if (Test-Path $PyStore) { Remove-Item $PyStore -Recurse -Force }
   New-Item -ItemType Directory -Force $PyStore | Out-Null
-
   $env:UV_PYTHON_INSTALL_DIR = $PyStore
-  uv python install $PyVersion
-  if ($LASTEXITCODE -ne 0) { Write-Err "uv python install $PyVersion 失败" }
+
+  # 已经装过同版本就复用。**原先每次都 Remove-Item 整个 store 再重装** ——
+  # 那是这条流水线里最慢的一步（要重新解包 23.9MB 的 PBS，网络不好时会长时间无输出，
+  # 看起来像卡死）。而它与本次改动毫无关系：同一个版本号，装出来的东西一模一样。
+  #
+  # 复用不放松安全性：下面那道"必须在 $PyStore 之下"的硬校验照旧，
+  # 误挑系统 Python 仍然会让打包失败。
+  $reusable = Get-ChildItem $PyStore -Directory -EA 0 |
+              Where-Object { Test-Path (Join-Path $_.FullName "python.exe") } |
+              Where-Object { (& (Join-Path $_.FullName "python.exe") -c "import platform;print(platform.python_version())" 2>$null) -eq $PyVersion } |
+              Select-Object -First 1
+  if ($reusable) {
+    Write-OK "复用已装的内置 Python $PyVersion（跳过下载）"
+  } else {
+    uv python install $PyVersion
+    if ($LASTEXITCODE -ne 0) { Write-Err "uv python install $PyVersion 失败" }
+  }
 
   # 不用 `uv python find`：它会优先挑项目 .venv 或系统里同版本的 Python（CI 上 uv sync
   # 建的 .venv 恰好也是 3.11.9 → 被误挑）。直接在 $PyStore 里定位刚装好的内置解释器。
