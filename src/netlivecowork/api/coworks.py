@@ -159,6 +159,15 @@ async def recheck_coworks() -> RecheckResponse:
     #
     # 前端只看到一行 500，而且**重启才好**——用户完全无从知道为什么。
     await _resync_templates()
+    # 套件自带的 MCP 同理 —— 它也只在启动那一遍注册过。套件现在是后端起来之后才到位的，
+    # 不补这一下，`mcp.define` 里的 server 要等下次重启才生效，
+    # 而界面上这个 cowork 已经在了：又是一个"装上了但用不了"。
+    try:
+        from netlivecowork.bootstrap.host_runtime import _register_suite_mcp_servers
+
+        _register_suite_mcp_servers()
+    except Exception:
+        logger.warning("cowork：对账后注册套件自带 MCP 失败", exc_info=True)
     return RecheckResponse(
         installed=result.installed,
         skipped=result.skipped,
