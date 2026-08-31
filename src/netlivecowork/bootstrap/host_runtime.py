@@ -334,16 +334,10 @@ def _register_mcp(runtime):
     manager = MCPProviderManager(MCPServerStore(), runtime.providers, wrap=_cowork_mcp_wrapper())
     manager.load_from_store()
     deps.set_mcp_manager(manager)
-
-    # 套件自带的 MCP（清单 mcp.define）——**必须在这里，不能放进 _setup_cowork()**。
-    # 那个函数跑在整条装配的最前面（runtime 都还没建完），管理器还不存在，
+    # 套件自带的 MCP **不在这里注册** —— 它和模板、LLM 账号一样是"套件的派生状态"，
+    # 统一由 apply_cowork_state() 在 lifecycle 里做（那时管理器已经建好）。
+    # 曾经放进 _setup_cowork()，那个函数跑在装配最前面、管理器还不存在，
     # 一调就是 RuntimeError: MCPProviderManager not initialized，被 catch 吞成一行 warning。
-    # 于是启动那遍从来没注册成功过，只有 recheck 那条路能补上；而 recheck 在
-    # "没下载、没收回"时直接 return —— 结果就是所有 agent 只剩 browser-mcp。
-    try:
-        _register_suite_mcp_servers()
-    except Exception:
-        logger.warning("cowork：套件自带 MCP 注册失败，本次只有随包那些", exc_info=True)
     return manager
 
 
@@ -482,44 +476,69 @@ def _cowork_local_skill_wrapper(inner):
             LocalSkillOwners,
         )
 
-        owners = LocalSkillOwners(paths.data_dir())
-
-        def labels_of(skill_name: str):
-            """这条 skill 归谁。**要同时认目录名和 SKILL.md 里的 name。**
-
-            归属是按 `skill_id` 存的，而 `skill_id` 是**目录名**
-            （services/local.py: `"skill_id": skill_dir.name`）；
-            运行时这里拿到的却是能力名，也就是 SKILL.md frontmatter 里的 `name`
-            （`meta.name or skill_dir.name`）。两者不一致的 skill——目录叫 a、
-            里面写 name: b——归属就永远对不上：用户在技能中心明明勾了，
-            agent 那边查不到记录，当成"通用"或"没有"，而两边都不报错。
-
-            先按拿到的名字查；查不到再反查一遍目录名。
-            """
-            got = owners.labels_of(skill_name)
-            if got:
-                return got
-            try:
-                from netlivecowork.api import deps
-
-                svc = deps.get_local_skill_service()
-                for item in svc.list_skills():
-                    if item.get("name") == skill_name and item.get("skill_id") != skill_name:
-                        return owners.labels_of(item["skill_id"])
-            except Exception:
-                pass
-            return got
-
+        # 归属库自己认两个 key（目录名 / SKILL.md 里的 name），见 LocalSkillOwners。
+        # **不要在这里做反查** —— 曾经写成查不到就去 api.deps 拉服务全量扫一遍目录：
+        # 方向反了（装配层反够 api），而且那是能力清单的热路径，每轮对话都要问。
+        owners = LocalSkillOwners(paths.data_dir(), skills_dir=paths.skills_dir())
         return CoworkScopedLocalSkillProvider(
             inner,
             owned_labels_fn=_cowork_owned_labels,
             # 每次现查，不缓存：用户在技能中心改完归属，下一条消息就该按新归属走，
             # 而不是等重启。这份表很小，读一次是一次 json.loads。
-            skill_labels_fn=labels_of,
+            skill_labels_fn=owners.labels_of,
         )
     except Exception:
         logger.warning("cowork：本地 skill 归属隔离装配失败，本次不隔离", exc_info=True)
         return None
+
+
+async def apply_cowork_state() -> None:
+    """已装套件集合变了之后，把**所有派生状态**刷新一遍。
+
+    ## 这个函数存在的唯一理由
+
+    这些状态原先各刷各的：启动时在装配链上按顺序建，运行期由 `/coworks/recheck`
+    再列一遍。**两份清单必须一致，而它们各写各的** —— 于是每往启动流程里加一样
+    派生状态，recheck 就漏一样，而漏掉的表现全都是"装上了但用不了"：
+
+        模板索引没重扫  → 界面上有这个智能体，新建会话 500（TemplateNotFoundError）
+        套件 MCP 没注册 → 套件里 use + define 都写着，agent 说自己没有这个工具
+        LLM 账号没重建 → 套件收回了，它下发的账号还挂着，且带着可用的凭据
+
+    三个都实际发生过，都是一个一个补上去的。所以清单**只留这一份**，
+    两条路都调它；tests/test_cowork_state_single_source.py 会挡住"又在别处列一遍"。
+
+    失败不抛：对账本身已经成功，派生状态刷新失败只该降级，不该让整个请求 500。
+    """
+    from netlivecowork.cowork import runtime as cowork_runtime
+
+    # ① 阵容 / 归属 / 能力策略 / 市场路由
+    try:
+        cowork_runtime.reload()
+    except Exception:
+        logger.warning("cowork：重读阵容失败", exc_info=True)
+
+    # ② 套件下发的 LLM 账号
+    try:
+        rebuild_cowork_llm_accounts()
+    except Exception:
+        logger.warning("cowork：重建套件 LLM 账号失败", exc_info=True)
+
+    # ③ 模板索引（会话按 template_id 找它）
+    try:
+        from netlivecowork import paths
+        from netlivecowork.api import deps
+
+        n = await deps.get_template_syncer().sync(paths.coworks_dir())
+        logger.info("cowork：重扫模板 %d 个", n)
+    except Exception:
+        logger.warning("cowork：重扫模板失败", exc_info=True)
+
+    # ④ 套件自带的 MCP
+    try:
+        _register_suite_mcp_servers()
+    except Exception:
+        logger.warning("cowork：注册套件自带 MCP 失败", exc_info=True)
 
 
 def rebuild_cowork_llm_accounts() -> None:

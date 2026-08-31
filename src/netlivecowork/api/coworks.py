@@ -143,48 +143,15 @@ async def recheck_coworks() -> RecheckResponse:
     from netlivecowork.cowork.reconcile import reconcile
 
     result = reconcile(paths.cowork_staging_dir(), paths.coworks_dir())
-    cowork_runtime.reload()
-    # 阵容/归属/市场路由由 reload 重建；**账号得单独来一次** —— 它只在开机那条路上登记，
-    # 不重建的话收回之后那个账号还挂着，且带着可用的凭据（需求 F5）。
-    from netlivecowork.bootstrap.host_runtime import rebuild_cowork_llm_accounts
+    # 对账之后要刷新哪些派生状态，**清单只有一份**（host_runtime.apply_cowork_state），
+    # 启动那条路调的也是它。这里不许再自己列一遍——以前就是各列各的，
+    # 每往启动流程里加一样，这里就漏一样，而漏掉的表现全是"装上了但用不了"。
+    from netlivecowork.bootstrap.host_runtime import apply_cowork_state
 
-    rebuild_cowork_llm_accounts()
-    # ⚠ **模板也要重扫**，而且这一步以前没有。
-    #
-    # 后端启动时按当时的 coworks 目录建模板索引。取包现在跑在启动之后（W3 的令牌要等
-    # 后端起来才拿得到），所以全新安装那一次，建索引时目录还是空的——套件几秒后才落地。
-    # 不重扫的现象是：界面上有这个智能体，点新建会话却
-    #
-    #     TemplateNotFoundError: Template 'agent:ipmaster' not found
-    #
-    # 前端只看到一行 500，而且**重启才好**——用户完全无从知道为什么。
-    await _resync_templates()
-    # 套件自带的 MCP 同理 —— 它也只在启动那一遍注册过。套件现在是后端起来之后才到位的，
-    # 不补这一下，`mcp.define` 里的 server 要等下次重启才生效，
-    # 而界面上这个 cowork 已经在了：又是一个"装上了但用不了"。
-    try:
-        from netlivecowork.bootstrap.host_runtime import _register_suite_mcp_servers
-
-        _register_suite_mcp_servers()
-    except Exception:
-        logger.warning("cowork：对账后注册套件自带 MCP 失败", exc_info=True)
+    await apply_cowork_state()
     return RecheckResponse(
         installed=result.installed,
         skipped=result.skipped,
         removed=list(result.removed),
         failed=result.failed,
     )
-
-
-
-async def _resync_templates() -> None:
-    """重扫已装套件目录，刷新模板索引。失败不影响对账结果本身。"""
-    try:
-        from netlivecowork import paths
-        from netlivecowork.api import deps
-
-        syncer = deps.get_template_syncer()
-        n = await syncer.sync(paths.coworks_dir())
-        logger.info("cowork：对账后重扫模板 %d 个", n)
-    except Exception:
-        logger.warning("cowork：对账后重扫模板失败", exc_info=True)

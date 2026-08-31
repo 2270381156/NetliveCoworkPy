@@ -22,8 +22,58 @@ FILE_NAME = "local_skill_owners.json"
 
 
 class LocalSkillOwners:
-    def __init__(self, data_dir: Path) -> None:
+    """本地 skill 的归属表。
+
+    ## 为什么要认两个 key
+
+    记录按 `skill_id` 存，而 `skill_id` 是**目录名**（services/local.py 那句
+    `"skill_id": skill_dir.name`）。可运行期问过来的是**能力名**，也就是
+    SKILL.md frontmatter 里的 `name`（`meta.name or 目录名`）。
+
+    多数 skill 两者相同，直查就命中。但目录叫 a、文件里写 `name: b` 的那些，
+    两边永远对不上：用户在技能中心明明勾了某个 cowork，agent 那边查不到记录，
+    当成"通用"或"没有"——**而两边都不报错**。
+
+    所以这里认两个 key：先直查（O(1)，覆盖绝大多数），对不上才建一次别名表。
+    别名表按 skills 目录的 mtime 缓存——建它要解析每个 SKILL.md，
+    放在热路径上每次都扫是不能接受的（能力清单每轮对话都要问一遍）。
+    """
+
+    def __init__(self, data_dir: Path, skills_dir: Path | None = None) -> None:
         self._dir = Path(data_dir)
+        #: 解析别名用。不给就退化成"只认目录名"——老行为，不会更差。
+        self._skills_dir = Path(skills_dir) if skills_dir else None
+        self._alias: dict[str, str] = {}
+        self._alias_stamp: object = None
+
+    def _alias_map(self) -> dict[str, str]:
+        """SKILL.md 里的 name → 目录名。按 skills 目录 mtime 缓存。"""
+        if self._skills_dir is None:
+            return {}
+        try:
+            stamp = self._skills_dir.stat().st_mtime_ns
+        except OSError:
+            return {}
+        if stamp == self._alias_stamp:
+            return self._alias
+        out: dict[str, str] = {}
+        try:
+            from ctx_weft.providers.capability_skill_local._parser import load_skill_md
+
+            for d in self._skills_dir.iterdir():
+                if not d.is_dir() or not (d / "SKILL.md").exists():
+                    continue
+                try:
+                    meta, _ = load_skill_md(d)
+                except Exception:
+                    continue
+                name = (getattr(meta, "name", "") or "").strip()
+                if name and name != d.name:
+                    out[name] = d.name
+        except OSError:
+            return self._alias
+        self._alias, self._alias_stamp = out, stamp
+        return out
 
     def _path(self) -> Path:
         return self._dir / FILE_NAME
@@ -47,7 +97,11 @@ class LocalSkillOwners:
         存量 skill 一条记录都没有，读成通用才是它们此前的实际行为——
         读成"谁都不能用"会让用户已有的 skill 在升级后一夜之间全部消失。
         """
-        return _labels_of(self._load().get(skill_id))
+        data = self._load()
+        if skill_id in data:                       # 绝大多数：目录名与 name 相同
+            return _labels_of(data[skill_id])
+        alias = self._alias_map().get(skill_id)    # 仅在对不上时才建表
+        return _labels_of(data.get(alias)) if alias else ()
 
     def set_labels(self, skill_id: str, labels) -> None:
         data = self._load()
