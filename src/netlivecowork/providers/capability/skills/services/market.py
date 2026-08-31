@@ -132,6 +132,7 @@ class SkillMarketService:
                 "name": it.name,
                 "description": it.description,
                 "updater": it.updater,
+                "download_count": it.download_count,
                 "create_time": it.create_time,
                 "source": source,
                 "is_pulled": f"{source}:{it.id}" in pulled,

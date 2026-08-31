@@ -32,8 +32,10 @@ import branding from '@branding'   // 品牌显示名唯一来源，见 electron
 // 用 localStorage 落盘（Electron 下落在 userData 里，即 %APPDATA%\<branding.npmName>\
 // Local Storage\——注意不是放业务数据的 %APPDATA%\<branding.appDataDir>\，两者是不同目录）。
 
-// 顶栏品牌名分段：按连字符/空格拆，供 · 分隔排版用。
-const brandParts: string[] = String(branding.productName).split(/[-\s]+/).filter(Boolean)
+// 顶栏只显示品牌名的**第一段**（NetLIVE Cowork → NetLIVE）。
+// 后面紧跟着的就是当前 cowork 的名字，再写一遍 "Cowork" 是重复。
+const brandMark: string = String(branding.productName).split(/[-\s]+/).filter(Boolean)[0]
+  || String(branding.productName)
 
 const PENDING_STORAGE_KEY = 'netlive.pendingSession.v1'
 
@@ -583,14 +585,7 @@ function BrandBlock({ agentActivity }: { agentActivity?: Record<string, number> 
       <div className="flex items-center" style={{ gap: 3, height: ROW_H }}>
         {/* 品牌名按分隔符（连字符/空格）拆成多段，段间以 · 分隔——"IPMaster-Cowork"
             与 "NetLIVE Cowork" 都能得到原来的两段式排版；单段名则原样显示。 */}
-        {brandParts.map((part, i) => (
-          <span key={part} className="contents">
-            {i > 0 && (
-              <span style={{ fontSize: 13, fontWeight: 400, lineHeight: 1, color: 'var(--t3)', letterSpacing: '0.2px' }}>·</span>
-            )}
-            <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1, color: 'var(--t1)', letterSpacing: '0.2px' }}>{part}</span>
-          </span>
-        ))}
+        <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1, color: 'var(--t1)', letterSpacing: '0.2px' }}>{brandMark}</span>
       </div>
       {/* 外壳名之后是当前 cowork：外壳是产品招牌（对外形象），cowork 是用户每时每刻
           需要知道的上下文，两者都值得占位，竖线分出「外壳 / 当前」的层级。 */}

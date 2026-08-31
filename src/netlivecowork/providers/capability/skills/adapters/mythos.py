@@ -226,6 +226,32 @@ def _to_item(item: dict) -> MarketItem:
         id=str(item.get("skill_id", "")),
         name=name,
         description=_localized(item.get("description")) or None,
-        updater=item.get("updater"),
+        updater=_first(item, ("updater", "creatorName", "creator_name", "author")),
         create_time=item.get("updated_time"),
+        download_count=_int_or_none(item, ("download_count", "downloadCount", "downloads")),
     )
+
+
+def _first(item: dict, keys: tuple[str, ...]) -> str | None:
+    """取第一个有值的字段。
+
+    各家的字段名不一样（这边叫 updater，netcowork 叫 creatorName），而只认一个名字的
+    后果是：界面上作者一栏永远空着，没有任何报错，也看不出是没取到还是本来就没有。
+    """
+    for k in keys:
+        v = item.get(k)
+        if v not in (None, ""):
+            return str(v)
+    return None
+
+
+def _int_or_none(item: dict, keys: tuple[str, ...]) -> int | None:
+    for k in keys:
+        v = item.get(k)
+        if v is None or v == "":
+            continue
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            continue
+    return None

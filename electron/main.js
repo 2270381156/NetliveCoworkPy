@@ -1024,6 +1024,11 @@ function startBackend(bridgeInfo = null) {
       // ⚠ 显式下发，别让后端自己再推一遍（见 getCoworkStagingDir 的说明）。
       NLC_COWORK_PACKAGES_DIR: getCoworkStagingDir(),
       NLC_COWORKS_DIR: getCoworksDir(),
+      // 上一代的数据目录，供后端做一次性存量导入。目录名是 branding 的知识，
+      // 让后端自己拼一遍就又是一处"两边各推一遍"。老目录不存在就传空。
+      NLC_LEGACY_APPDATA_DIR: branding.legacyAppDataDir
+        ? path.join(app.getPath('appData'), branding.legacyAppDataDir)
+        : '',
       NLC_AGENTS_DIR: getUserAgentsDir(),
     },
     cwd: getAppDataDir(),

@@ -1118,12 +1118,24 @@ async def sse_generator(session_id: str, last_event_id: int | None = None, lean:
     # waiting_input 帧无 hitl_id,前端去重键退化为 local:*,与 /hitl/pending 的 hit_* 键对不上 →
     # 同一问题双卡。多 pending 全量补发（created_at 升序）,与 /hitl/pending 同口径,前端按
     # hitl_id 幂等 upsert。内存无 pending（未 recover / 无 manager）→ 回退重放最近一条存量帧。
-    if entry.status == "PAUSED_HITL":
+    # ⚠ **判据是"有没有待答的问题"，不是会话状态叫什么。**
+    #
+    # 原先只在 PAUSED_HITL 时补发。但 ask_user 这类提问落到会话上未必是这个状态——
+    # 实测里带着 pending HITL 的会话停在 PAUSED（恢复日志写的是
+    # "PAUSED (1 pending, drain deferred to reply)"）。状态对不上就不补发，
+    # 表现是：切到别的 cowork 再切回来，那个问题框没了，而任务还在等它，
+    # 用户既看不到问题、也不知道为什么这条会话不动了。
+    #
+    # form == "wait" 是软待命（control:wait_for_user），它本来就没有面板，跳过——
+    # 给它补一个空框比不补更糟。
+    if entry.status in ("PAUSED_HITL", "PAUSED"):
         sent = False
         for req in _pending_hitl_of(session_id):
+            if str(getattr(req, "form", "") or "") == "wait":
+                continue
             yield f"data: {_waiting_input_json(req)}\n\n"
             sent = True
-        if not sent:
+        if not sent and entry.status == "PAUSED_HITL":
             for evt_json in reversed(snapshot):
                 try:
                     if json.loads(evt_json).get("type") == "waiting_input":

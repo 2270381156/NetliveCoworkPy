@@ -1,25 +1,5 @@
 {
   "mcpServers": {
-    "tech-kb-mcp": {
-      "url": "https://ipmastercowork.gts.huawei.com/tech-kb/mcp",
-      "headers": {},
-      "default_purposes": [
-        "act"
-      ],
-      "capability_purpose_override": {},
-      "timeout_per_call_sec": 60,
-      "connect_timeout_sec": 10
-    },
-    "knowledge-a-net": {
-      "url": "http://knowledge-a-net.his-beta.huawei.com/mcp",
-      "headers": {},
-      "default_purposes": [
-        "act"
-      ],
-      "capability_purpose_override": {},
-      "timeout_per_call_sec": 60,
-      "connect_timeout_sec": 10
-    },
     "browser-mcp": {
       "command": "${APP_NODE}",
       "args": [
