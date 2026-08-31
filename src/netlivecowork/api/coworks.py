@@ -129,7 +129,7 @@ class RecheckResponse(BaseModel):
 
 
 @router.post("/coworks/recheck", response_model=RecheckResponse)
-def recheck_coworks() -> RecheckResponse:
+async def recheck_coworks() -> RecheckResponse:
     """立刻对一次账。
 
     **给客户端主进程调**：它取完包摆进暂存目录之后调这里，让后端装下去。
@@ -149,9 +149,33 @@ def recheck_coworks() -> RecheckResponse:
     from netlivecowork.bootstrap.host_runtime import rebuild_cowork_llm_accounts
 
     rebuild_cowork_llm_accounts()
+    # ⚠ **模板也要重扫**，而且这一步以前没有。
+    #
+    # 后端启动时按当时的 coworks 目录建模板索引。取包现在跑在启动之后（W3 的令牌要等
+    # 后端起来才拿得到），所以全新安装那一次，建索引时目录还是空的——套件几秒后才落地。
+    # 不重扫的现象是：界面上有这个智能体，点新建会话却
+    #
+    #     TemplateNotFoundError: Template 'agent:ipmaster' not found
+    #
+    # 前端只看到一行 500，而且**重启才好**——用户完全无从知道为什么。
+    await _resync_templates()
     return RecheckResponse(
         installed=result.installed,
         skipped=result.skipped,
         removed=list(result.removed),
         failed=result.failed,
     )
+
+
+
+async def _resync_templates() -> None:
+    """重扫已装套件目录，刷新模板索引。失败不影响对账结果本身。"""
+    try:
+        from netlivecowork import paths
+        from netlivecowork.api import deps
+
+        syncer = deps.get_template_syncer()
+        n = await syncer.sync(paths.coworks_dir())
+        logger.info("cowork：对账后重扫模板 %d 个", n)
+    except Exception:
+        logger.warning("cowork：对账后重扫模板失败", exc_info=True)

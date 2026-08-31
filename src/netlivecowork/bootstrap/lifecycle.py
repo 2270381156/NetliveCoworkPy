@@ -230,6 +230,13 @@ def _start_watcher(hr: HostRuntime) -> Any:
     agents_dir: Path = hr.agents_dir
     skills_dir: Path = hr.skills_dir
 
+    # ⚠ 目录先建出来再判。全新安装时套件还没落地，这个目录不存在——
+    # 而 watch 只在启动这一刻注册一次，错过了就再也不会热更新，
+    # 表现是"装上了要重启才看得到"。
+    try:
+        agents_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     if hr.template_syncer is not None and agents_dir.exists():
         async def _on_agents_change() -> None:
             count = await hr.template_syncer.sync(agents_dir)

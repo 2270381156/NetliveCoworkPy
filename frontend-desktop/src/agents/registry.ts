@@ -15,6 +15,8 @@
  * `agent:<id>`。这层负责两个方向的翻译，别在组件里手工拼字符串。
  */
 
+import branding from '@branding'   // 只用来读 legacyAgentId：历史会话认领给谁
+
 export interface Agent {
   /** 与后端 resources/agents/<id>/ 目录同名。 */
   id: string
@@ -139,6 +141,20 @@ const LEGACY_TEMPLATE_IDS = new Set(['default', 'agent:default'])
  */
 export function agentOfSession(session: { template_id?: string | null }): Agent | null {
   const raw = typeof session.template_id === 'string' ? session.template_id.trim() : ''
-  if (LEGACY_TEMPLATE_IDS.has(raw) || !raw) return defaultAgent()
+  if (LEGACY_TEMPLATE_IDS.has(raw) || !raw) return legacyClaimAgent()
   return agentById(agentIdFromTemplate(raw))
+}
+
+/**
+ * 历史会话认领给谁。
+ *
+ * 先按 branding.legacyAgentId 找（当时产品只有一个 agent，就是它），找不到才退回阵容第一个。
+ *
+ * **不能只靠「阵容第一个」**：谁排第一由云端下发的 order 决定，管理员调一次顺序，
+ * 一批历史会话就会跑到别的 agent 名下；而阵容还没加载好时第一个是 null，
+ * 那些会话会变成没有归属、直接平铺在列表里——用户看到的是"没有任何权限，但会话都在"。
+ */
+function legacyClaimAgent(): Agent | null {
+  const id = String((branding as { legacyAgentId?: string }).legacyAgentId || '').trim()
+  return (id ? agentById(id) : null) ?? defaultAgent()
 }

@@ -4,6 +4,8 @@
   "productName": "NetLIVE Cowork",
   "_dirComment": "appDataDir 与 npmName 各自决定一个 AppData 目录，衍生品牌两个都要改，只改一个会有一半状态串台：appDataDir → %APPDATA%\\<值>，放业务数据（data/logs/resources/.env）；npmName → package.json 的 name，Electron 据此定 userData=%APPDATA%\\<值>，放 Chromium 的 Cache/Local Storage/Cookies。npmName 还决定 NSIS 卸载程序文件名与 webview UA 里的应用标识。",
   "appDataDir": "NetLIVECowork",
+  "_legacyAgentComment": "agent 上线之前的历史会话（template_id 是 default/agent:default）归到哪个 cowork。当时产品只有一个 agent，就是 IPMaster，所以是 ipmaster。**不能靠「阵容第一个」来猜**：云端下发的 order 决定谁排第一，改一次排序就会把一批历史会话搬到别的 agent 名下；而且阵容还没加载好时第一个是 null，会话会变成没归属、直接平铺在列表里。留空则退回阵容第一个。",
+  "legacyAgentId": "ipmaster",
   "legacyAppDataDir": "IPMaster-Cowork",
   "_backendPortComment": "本地后端监听的端口。**派生品牌必须给一个不同的值** —— 两个品牌若共用同一端口，先启动的那个会被后启动的当成「自己的后端」而复用，后者随即放弃启动自己的后端，并把界面从对方那里加载（后端把前端 dist 挂在 /），结果是前端、后端、数据整条都串到对方那边。运行期 electron/main.js 以此为默认值；NLC_BACKEND_PORT 环境变量优先级更高。⚠ 本端口必须避开上一代 IPMaster-Cowork 的 15926：旧版改不了了，它的探测只看 HTTP 200、不比对 appId，一旦我们占上 15926，后启动的旧版就会反过来复用我们的后端。",
   "backendPort": 17926,

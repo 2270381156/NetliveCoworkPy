@@ -32,7 +32,10 @@ class RemoteCatalogItem(BaseModel):
     id: str
     name: str
     description: str | None
-    updater: str | None = None
+    updater: str | None = None            # 作者。各家字段名不同（netcowork 回 creatorName），由 adapter 归一
+    #: 下载/引用次数。**必须在这里声明**——response_model 没有的字段 FastAPI 会直接丢掉，
+    #: 表现是后端算出来了、接口里却没有，而两边都不报错。
+    download_count: int | None = None
     create_time: str | None
     is_pulled: bool
 

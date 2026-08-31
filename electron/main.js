@@ -382,11 +382,25 @@ async function syncCoworkPackagesOnce({ applyNow = false } = {}) {
     // **也要告诉界面**。后端装完了、界面却不知道，用户看到的是"页眉里有这个智能体，
     // 新建会话却说你没有权限"—— 两处读的是同一份清单，只是界面那份是开机那一刻取的。
     // 用户唯一的出路是重启，而重启为什么管用他也不知道。
-    if (res.ok && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('coworks-changed');
-    }
+    if (res.ok) notifyCoworksChanged();
   } catch (e) {
     elog(`[cowork] 对账异常（不影响使用）：${(e && e.message) || e}`);
+  }
+}
+
+//: 套件变了但窗口还没建好 —— 记下来，等渲染层就绪补发。
+//
+// 取包跑在 startBackend 之后、createWindow 之前后不定，而全新安装恰恰是"套件刚装好、
+// 窗口刚出来"这两件事挨得最近的时候。直接 send 有一半概率发给一个还不存在的窗口，
+// 于是界面停在空阵容上，用户只能点重试。
+let coworksChangedPending = false;
+
+function notifyCoworksChanged() {
+  if (mainWindow && !mainWindow.isDestroyed() && rendererReady) {
+    mainWindow.webContents.send('coworks-changed');
+    coworksChangedPending = false;
+  } else {
+    coworksChangedPending = true;
   }
 }
 
@@ -1574,6 +1588,11 @@ ipcMain.handle('open-external', async (_, url) => {
 
 // Renderer mounted successfully — cancel the white-screen watchdog.
 ipcMain.on('renderer-ready', () => {
+  // 渲染层刚就绪：把它没赶上的那次阵容变更补上。
+  if (coworksChangedPending) {
+    coworksChangedPending = false;
+    try { mainWindow?.webContents.send('coworks-changed'); } catch (_) {}
+  }
   rendererReady = true;
   if (rendererWatchdog) { clearTimeout(rendererWatchdog); rendererWatchdog = null; }
   elog('Renderer signalled ready');
