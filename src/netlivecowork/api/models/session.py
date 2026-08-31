@@ -1,4 +1,4 @@
-    """In-memory session model, registry, SSE consumer and startup utilities."""
+"""In-memory session model, registry, SSE consumer and startup utilities."""
 
 from __future__ import annotations
 
