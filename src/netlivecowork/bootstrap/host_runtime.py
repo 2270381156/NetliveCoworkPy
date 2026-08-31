@@ -439,6 +439,16 @@ def _setup_cowork() -> None:
     except Exception:
         logger.warning("cowork：策略装配失败，本次不做能力隔离", exc_info=True)
 
+    # 套件自带的 MCP 定义（清单 mcp.define）。
+    #
+    # ⚠ **这一步以前不存在** —— `mcp_define` 解析了却没人用，于是套件声明的 server
+    # 全靠应用随包发。表现是：套件里写着 use + define，agent 却说自己没有这个工具，
+    # 而清单看上去一切正常。随包那份一旦不发了（或被清理掉），所有 cowork 一起失去它。
+    try:
+        _register_suite_mcp_servers()
+    except Exception:
+        logger.warning("cowork：套件自带 MCP 注册失败，本次只有随包那些", exc_info=True)
+
     # cowork 自带的技能市场。**只在这一处接** —— 市场层自己不认识 cowork（架构设计 §7）：
     # 那几个地址写在套件里（cowork.json 的 skills.*），属于权限，不属于部署配置。
     try:
@@ -737,3 +747,35 @@ def _wire_authorizers(runtime, providers, agent_provider, fs_provider) -> None:
     )
     providers.set_capability_authorizer(FsTool.WRITE_FILE, write_authz)
     providers.set_capability_authorizer(f"{FS_PROVIDER_NAME}:edit_file", write_authz)
+
+
+
+def _register_suite_mcp_servers() -> None:
+    """把已装套件 `mcp.define` 里的 server 注册进 MCP 管理器（不落盘）。
+
+    同名冲突时**不覆盖**：用户手工配的和随包的优先。两个套件定义同一个名字时先到先得，
+    并打日志——那是套件打包的问题，应该让运维看见，而不是在这里悄悄选一个。
+    """
+    from netlivecowork import paths
+    from netlivecowork.api import deps
+    from netlivecowork.cowork import installed
+    # ⚠ 复用 store 的那个转换器，**别自己再拼一遍 config**。
+    # 套件里 define 的那份就是 mcp.json 条目的原样形状（见 MCPServerDef 的说明），
+    # 而"有 url 就是 http、有 command 就是 stdio"这条推断只写在那里。自己拼的话
+    # transport 会落到默认的 stdio，带着 url 走 stdio —— 连不上，且报错指不到这里。
+    from netlivecowork.providers.capability.mcp.store import _entry_to_config
+
+    manager = deps.get_mcp_manager()
+    if manager is None:
+        return
+    n = 0
+    for cowork in installed.list_all(paths.coworks_dir()):
+        for d in cowork.mcp_define:
+            cfg = _entry_to_config(d.name, dict(d.config))
+            if cfg is None:
+                logger.warning("cowork：套件 %s 的 MCP %r 定义有问题，跳过", cowork.id, d.name)
+                continue
+            if manager.register_transient(cfg):
+                n += 1
+    if n:
+        logger.info("cowork：套件自带的 MCP 注册了 %d 个", n)

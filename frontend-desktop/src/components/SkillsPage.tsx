@@ -408,6 +408,20 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
     },
   })
 
+  // 改归属。**市场页签里也要能改** —— 用户在哪个页签点开这条 skill 是偶然的，
+  // 归属却是这条 skill 的固有属性；只在「本地」页签给编辑框，等于逼他先去另一个页签找一遍。
+  //
+  // ⚠ 只对**已经存在的**记录开放（本地导入的、已引用的）。市场里还没引用的那些，
+  // 后端 set_labels 找不到记录会直接 no-op —— 给了编辑框却存不进去，是静默失败。
+  const ownerMut = useMutation({
+    mutationFn: ({ key, coworks }: { key: string; coworks: SkillCoworks }) =>
+      skillsApi.setCoworks(key, coworks),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['skills'] })
+      qc.invalidateQueries({ queryKey: ['skill-catalog'] })
+    },
+  })
+
   // pull 失败信息，按 source:id 复合键定位到具体卡片（例如 mythos 某些 skill 内容为空）。
   const [pullError, setPullError] = useState<{ key: string; msg: string } | null>(null)
 
@@ -601,6 +615,10 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
             ? () => { unpullMut.mutate(opened.key); setOpened(null) }
             : undefined}
           unreferencing={unpullMut.isPending}
+          onCoworksChange={opened.kind === 'market'
+            ? undefined                       // 还没引用 → 没有可存的记录，见 ownerMut 的说明
+            : coworks => ownerMut.mutate({ key: opened.key, coworks })}
+          coworksSaving={ownerMut.isPending}
         />
       )}
     </div>

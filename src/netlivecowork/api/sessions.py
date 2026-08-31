@@ -326,7 +326,19 @@ async def create_session(
         reserved_output_tokens=_resolve_output_reserve(runtime, llm_account, llm_model),
     )
 
-    handle = await runtime.start_session(params)
+    # ⚠ **订阅必须在开跑之前挂上。**
+    # start_session 在返回之前就已经调度了 task —— 它一返回，事件就在往总线上发。
+    # 而消费者那条 create_task 在下面几个 await 之后（写库、拍工作区快照，快照要拷
+    # 整个工作区，几秒很正常），中间发出的事件没有订阅者，总线又不回放 → 永久丢失。
+    # 现象是新建会话的第一轮只剩半截：界面上留着一个工具调用，回复不见了，
+    # 而事件表里一切完整、重启也补不回来（history 读的是帧日志，不是重放事件）。
+    feed = _sm.open_event_feed(runtime, session_id)
+    try:
+        handle = await runtime.start_session(params)
+    except Exception:
+        if feed is not None:
+            await feed.close()
+        raise
 
     # start_session 在返回前已经调度执行 task。先把登录用户写进内存 session，再进行任何
     # 会让出事件循环的数据库操作，避免极快 skill 在 save_workspace 期间结束、Reporter
@@ -367,7 +379,8 @@ async def create_session(
         await _rw.snapshot_turn(handle.session_id, entry.turn_seq, _ws)
 
     entry._consumer_token += 1
-    asyncio.create_task(_sm.session_consumer(entry, runtime, entry._consumer_token))
+    # 把开跑前就挂上的那条订阅交给消费者；feed 为 None 时它自己开一条。
+    asyncio.create_task(_sm.session_consumer(entry, runtime, entry._consumer_token, feed=feed))
 
     return entry.to_dict()
 
