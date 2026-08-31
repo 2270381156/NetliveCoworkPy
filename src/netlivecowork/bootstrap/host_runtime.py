@@ -471,12 +471,39 @@ def _cowork_local_skill_wrapper(inner):
         )
 
         owners = LocalSkillOwners(paths.data_dir())
+
+        def labels_of(skill_name: str):
+            """这条 skill 归谁。**要同时认目录名和 SKILL.md 里的 name。**
+
+            归属是按 `skill_id` 存的，而 `skill_id` 是**目录名**
+            （services/local.py: `"skill_id": skill_dir.name`）；
+            运行时这里拿到的却是能力名，也就是 SKILL.md frontmatter 里的 `name`
+            （`meta.name or skill_dir.name`）。两者不一致的 skill——目录叫 a、
+            里面写 name: b——归属就永远对不上：用户在技能中心明明勾了，
+            agent 那边查不到记录，当成"通用"或"没有"，而两边都不报错。
+
+            先按拿到的名字查；查不到再反查一遍目录名。
+            """
+            got = owners.labels_of(skill_name)
+            if got:
+                return got
+            try:
+                from netlivecowork.api import deps
+
+                svc = deps.get_local_skill_service()
+                for item in svc.list_skills():
+                    if item.get("name") == skill_name and item.get("skill_id") != skill_name:
+                        return owners.labels_of(item["skill_id"])
+            except Exception:
+                pass
+            return got
+
         return CoworkScopedLocalSkillProvider(
             inner,
             owned_labels_fn=_cowork_owned_labels,
             # 每次现查，不缓存：用户在技能中心改完归属，下一条消息就该按新归属走，
             # 而不是等重启。这份表很小，读一次是一次 json.loads。
-            skill_labels_fn=owners.labels_of,
+            skill_labels_fn=labels_of,
         )
     except Exception:
         logger.warning("cowork：本地 skill 归属隔离装配失败，本次不隔离", exc_info=True)

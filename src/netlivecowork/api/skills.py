@@ -47,8 +47,18 @@ def _mark_skill_index_dirty() -> None:
         from ctx_weft.core.orchestrator.skill_executor_capability import (
             SkillExecutorCapabilityProvider,
         )
+        from ctx_weft.providers.capability_skill_local.provider import (
+            LocalSkillCapabilityProvider,
+        )
         for p in rt.providers.get_capability_providers():
-            if isinstance(p, SkillExecutorCapabilityProvider):
+            # ⚠ **两个都要作废，不是一个。**
+            # executor 管的是 read_file/exec_script 那条按名字直取的路；
+            # local provider 管的是**模型看得见哪些 skill**。只作废前者的现象是：
+            # 用户在技能中心把 skill 勾给了某个 cowork，那个 agent 却说自己没有——
+            # 因为它的能力清单还停在改动之前的快照。热更新那条路两个都做了，这里漏了。
+            if isinstance(p, LocalSkillCapabilityProvider):
+                p.invalidate_cache()
+            elif isinstance(p, SkillExecutorCapabilityProvider):
                 p.mark_dirty()
     except Exception:
         logger.warning("刷新 skill executor 索引失败", exc_info=True)
