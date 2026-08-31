@@ -1,0 +1,9 @@
+# 统一源码文本行尾为 LF：消除与上游 ctx-wefta 的 CRLF 噪声，保证跨仓 diff/patch 干净。
+*.py   text eol=lf
+*.sh   text eol=lf
+*.md   text eol=lf
+*.toml text eol=lf
+
+# lockfile 固定 LF：npm/electron 在本机改写行尾时，git 归一化后比较视为无变化，
+# 不再产生“幽灵改动”卡住合并/IDE 同步（取代原先 skip-worktree 的手动处理）。
+package-lock.json text eol=lf

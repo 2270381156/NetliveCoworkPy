@@ -1,0 +1,65 @@
+/* DOCX viewer (docx-preview). Mirrors NID's webview styling: a gray reading
+ * surface with white page "sheets" (shadowed, centered), like Word / Acrobat.
+ * All overrides are scoped under .ipm-docx-root so docx-preview's own styles
+ * (which it scopes under .docx) and our chrome don't leak into the app. */
+
+.ipm-docx-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Loading overlay sits above the (initially empty) render container. */
+.ipm-docx-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg2);
+}
+
+/* Gray reading surface that scrolls. */
+.ipm-docx-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: #525659;
+  padding: 20px 0;
+}
+
+/* Zoom is applied as a CSS transform on this wrapper (top-center origin so the
+ * page stays centered as it scales). */
+.ipm-docx-container {
+  transform-origin: top center;
+}
+
+/* docx-preview emits <div class="docx-wrapper"><section class="docx">…</section>…>
+ * with inWrapper:true + breakPages:true. Make the wrapper transparent and lay
+ * the page sections out as centered white cards. */
+.ipm-docx-root .docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.ipm-docx-root .docx-wrapper > section.docx {
+  background: #fff !important;
+  box-shadow: 0 2px 8px rgba(15, 31, 61, 0.25);
+  margin: 0 auto;
+}
+
+/* Fix a docx-preview bug: it maps the table-cell text direction `lrTb`
+ * (left-to-right, top-to-bottom = NORMAL horizontal text, the default) to
+ * `writing-mode: vertical-lr`, so cells that explicitly declare normal
+ * direction render with their text stacked vertically. `vertical-lr` is
+ * produced ONLY by that buggy lrTb mapping (genuine vertical cells — tbRl /
+ * btLr — use vertical-rl), so forcing horizontal-tb here corrects the bug
+ * without affecting legitimately-vertical cells. docx-preview sets the
+ * writing-mode inline, hence the [style*=] selector + !important. */
+.ipm-docx-root [style*="vertical-lr"] {
+  writing-mode: horizontal-tb !important;
+}

@@ -1,0 +1,174 @@
+/* PPTX viewer styles. The renderer is a verbatim port of NID's; NID's <style>
+ * block contained global helper classes (.slide-inner, .shape-text, .slide-table,
+ * .autofit-inner) that _buildShapeParts references but does NOT emit itself.
+ * They must live here for the port to render correctly. All rules are scoped
+ * under .ipm-pptx-root.
+ *
+ * NID's shape CSS uses var(--pt, 1pt) for all pt-derived sizes; the actual
+ * --pt value is emitted per-slide by slideToHtml (computed from slide.width)
+ * so font / padding / border / line-height scale with the slide card width
+ * via container queries (cqi units).
+ */
+
+.ipm-pptx-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg2);
+  --pptx-zoom: 1;
+  /* Scroll-snap settles on whole slides. `proximity`（而非 mandatory）：只在停下时
+   * 吸附到就近的 slide，滚动过程自由，不会一格一格顿——mandatory + snap-stop:always
+   * 会强制每张都停住，来回滑时明显卡顿。 */
+  scroll-snap-type: y proximity;
+}
+
+/* Page wrapper. Each one fills exactly one viewport-height of the scroll
+ * container, with the slide centred inside. This is what makes paging clean:
+ * scroll-snap-align: start on this wrapper means the next wrapper starts
+ * exactly one viewport below, with no leftover sliver of the previous slide. */
+.ipm-pptx-slide-page {
+  min-height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: start;
+  padding: 16px 24px;
+  box-sizing: border-box;
+  /* 屏幕外的 slide 跳过绘制/布局，大幅降低来回滚动的重绘开销（已渲染的 slide 常驻 DOM，
+   * 含大量 base64 图，全量绘制会掉帧）。页高由 min-height:100% 固定，跳过绘制不引起滚动跳变。 */
+  content-visibility: auto;
+}
+
+.ipm-pptx-slide {
+  /* Fit-page: the slide takes the smaller of two constraints —
+   *   - horizontal: container width minus side breathing room
+   *   - vertical:   container height multiplied by the slide aspect
+   *                 (width = height × aspect)
+   * Multiplied by --pptx-zoom for user zoom. The page wrapper above gives
+   * the breathing space, so we subtract only what we need for the slide's
+   * own padding/border, not the inter-page gap.
+   *
+   * The outer `max(200px, ...)` is a defensive floor: if the ResizeObserver
+   * hasn't reported a size yet (--pptx-container-* still 0px), the inner
+   * calc evaluates to a negative number and the slide would render as a
+   * blank zero-width box. Falling back to 200px keeps something visible
+   * for the brief render in between. */
+  width: max(200px, calc(
+    min(
+      var(--pptx-container-w, 100vw) - 48px,
+      (var(--pptx-container-h, 100vh) - 32px) * var(--slide-aspect, 1.778)
+    ) * var(--pptx-zoom, 1)
+  ));
+  aspect-ratio: var(--slide-aspect, 1.778);
+  background: white;
+  border: 1px solid var(--t3);
+  box-shadow: 0 6px 20px rgba(15, 31, 61, 0.18);
+  position: relative;
+  container-type: inline-size;
+  overflow: hidden;
+}
+
+/* NID's _buildShapeParts emits shape <div>s with absolute positioning relative
+ * to the slide-inner box (NID uses <div class="slide-inner"> as the absolute
+ * container). Match that structure. */
+.ipm-pptx-root .slide-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* NID's <style> block defines .shape-text — the default text box styling that
+ * _buildShapeParts references via `class="shape-text ${cls}"`. */
+.ipm-pptx-root .shape-text {
+  padding: calc(3.6 * var(--pt, 1pt)) calc(7.2 * var(--pt, 1pt));
+  line-height: normal;
+  word-wrap: break-word;
+  font-size: calc(14 * var(--pt, 1pt));
+}
+/* NOTE: do NOT add a `.shape-text p { margin: 0 }` reset here. Its specificity
+ * (0,2,1 — two classes + element) beats the per-paragraph `.sh-X-pN` rules
+ * (0,2,0) that shapeBuilder emits, which would clobber paragraph space-before/
+ * after (spcBef/spcAft) and collapse intentionally-spaced paragraphs (e.g.
+ * a CONTENTS list with 20pt gaps between items). Every emitted <p> already
+ * carries an explicit margin from its .sh-X-pN class, so no reset is needed. */
+.ipm-pptx-root .autofit-inner { transform-origin: top left; }
+
+/* NID's <style> block defines .slide-table — used by table shapes via
+ * `class="slide-table"`. */
+.ipm-pptx-root .slide-table {
+  border-collapse: collapse;
+  width: 100%;
+  height: 100%;
+  font-size: calc(8 * var(--pt, 1pt));
+}
+.ipm-pptx-root .slide-table th,
+.ipm-pptx-root .slide-table td {
+  /* #ccc is only a FALLBACK — cells that define their own borders (lnL/lnR/
+   * lnT/lnB) emit higher-specificity per-cell border rules that override this. */
+  border: calc(0.75 * var(--pt, 1pt)) solid #ccc;
+  /* Tight vertical metrics: PPT row heights are authoritative and assume
+   * compact cell text (cell marT≈0.75pt, marB=0, ~1.0 line spacing). Our
+   * previous 1.5pt vertical padding + 1.15 line-height made each cell ~17%
+   * taller than its allocated row, so multi-row tables overflowed their
+   * fixed-height container and a stacked second table got overlapped.
+   * Matching PPT's compact metrics keeps content within the row height. */
+  padding: calc(0.4 * var(--pt, 1pt)) calc(2.5 * var(--pt, 1pt));
+  line-height: 1.0;
+  vertical-align: middle;
+}
+.ipm-pptx-root .slide-table th { font-weight: 600; }
+
+/* ── 预览近似提示条(浮层，不随内容滚动) ──────────────────────────────────────
+ * PPTX 为自研近似渲染，排版/图表/形状可能与 Office 打开略有差异。优雅、非侵入：顶部居中
+ * 药丸样式，淡入，可关闭(永久不再提示)。展示 ~8s 后自动淡出。 */
+.ipm-pptx-notice {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 32px);
+  padding: 6px 7px 6px 12px;
+  border-radius: 999px;
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .1);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  animation: ipm-pptx-notice-in .35s ease both;
+}
+.ipm-pptx-notice > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ipm-pptx-notice button {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--t3);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.ipm-pptx-notice button:hover {
+  background: var(--bg3);
+  color: var(--t2);
+}
+@keyframes ipm-pptx-notice-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.ipm-pptx-notice { transform: translateX(-50%); }

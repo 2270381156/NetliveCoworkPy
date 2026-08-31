@@ -1,0 +1,75 @@
+{
+  "version": 2,
+  "references": {
+    "cowork:111bc4b63df1753ae49d6d46b906183e": {
+      "source": "cowork",
+      "remote_id": "111bc4b63df1753ae49d6d46b906183e",
+      "name": "docx",
+      "description": "Use this skill whenever the user wants to create, read, edit, or manipulate Word documents (.docx files). Triggers include: any mention of 'Word doc', 'word document', '.docx', or requests to produce professional documents with formatting like tables of contents, headings, page numbers, or letterheads. Also use when extracting or reorganizing content from .docx files, inserting or replacing images in documents, performing find-and-replace in Word files, working with tracked changes or comments, or converting content into a polished Word document. If the user asks for a 'report', 'memo', 'letter', 'template', or similar deliverable as a Word or .docx file, use this skill. Do NOT use for PDFs, spreadsheets, Google Docs, or general coding tasks unrelated to document generation.",
+      "triggers": [],
+      "skill_version": "1.0",
+      "owner": null,
+      "referenced_at": null
+    },
+    "cowork:2df175f505ff3ee595e5c84ecff0b52b": {
+      "source": "cowork",
+      "remote_id": "2df175f505ff3ee595e5c84ecff0b52b",
+      "name": "pdf",
+      "description": "Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.",
+      "triggers": [],
+      "skill_version": "1.0",
+      "owner": null,
+      "referenced_at": null
+    },
+    "cowork:578165d0805e0b73ae03fb7b24580ec5": {
+      "source": "cowork",
+      "remote_id": "578165d0805e0b73ae03fb7b24580ec5",
+      "name": "pptx",
+      "description": "Use this skill when the user needs to create, edit, or understand the content of a PowerPoint presentation (.pptx): building a deck from scratch or from a template; adding, removing, reordering, or restyling slides; working with layouts, speaker notes, or comments; extracting text or structure from a deck; QA-checking a deck you just produced. Do NOT use this skill for operations that do not require understanding or changing slide content: converting a deck to PDF or images, renaming, copying, moving, or inspecting the file are one-line shell operations - do them directly and stop. In particular, 'save this deck as PDF' is a format conversion, not a presentation task: run `soffice --headless --convert-to pdf <file>` and you are done; do not open the deck, review its content, or touch its images.",
+      "triggers": [],
+      "skill_version": "1.0",
+      "owner": null,
+      "referenced_at": null
+    },
+    "cowork:c88c65fd36a707e313e35879a24eca29": {
+      "source": "cowork",
+      "remote_id": "c88c65fd36a707e313e35879a24eca29",
+      "name": "skill-creator",
+      "description": "当用户想从零创建一个 skill，或把一套工作流程、经验、SOP 做成 skill 时使用。触发场景：「帮我创建个skill」「帮我写个skill」「把我的经验做成skill」「把这个流程变成skill」「整理一下我的工作流」「这是我的SOP」「我有个处理流程想让AI以后自动用」「教AI做XX」「帮我自动化这个流程」；或用户粘贴了一段流程描述想做成skill；也用于对【已有 skill】做结构性大改/推倒重构（步骤全重排、references 整体重组、skill 定位重设）——这本质上是重建，需要完整的构建+验收流程。如果用户只是要对已有 skill 做【局部修复/微调/扩展】（加一步、改一条规则、改描述/触发、修 bug、挪一段内容），那属于 skill-edit，请用 skill-edit、不要用这个，以免误触发。覆盖从梳理需求、构建文件、验收测试到触发自查的完整过程，无论用户是否懂技术都适用。使用此 skill 时，应创建一个 interactive 类型的 task。",
+      "triggers": [],
+      "skill_version": "1.0",
+      "owner": null,
+      "referenced_at": null
+    },
+    "cowork:07f37fb475c0e32266128991a91ec491": {
+      "source": "cowork",
+      "remote_id": "07f37fb475c0e32266128991a91ec491",
+      "name": "skill-edit",
+      "description": "当用户想对一个【已有的 skill】做局部修复、微调、扩展时使用（保持 skill 的整体结构和定位不变）。触发场景：「帮我改这个skill」「给这个skill加一步/加个规则」「改一下这个skill的某段/描述/触发条件」「把这段挪到references」「我的skill有问题/没按预期工作」「skill输出不对/偶尔出错」，或用户贴出一个 skill 让你做小改。核心作用：改 skill 时守住结构、只改该改的地方——别把 frontmatter 写臃肿、别把正文写乱、别顺手重写别处。如果用户是要【从零创建一个全新 skill】，或要对已有 skill 做【结构性大改/推倒重构/定位重设】（步骤全重排、references 整体重组、skill 定位改变），那属于 skill-creator，请用 skill-creator、不要用这个，以免误触发。使用此 skill 时创建一个 interactive 类型的任务。",
+      "triggers": [],
+      "skill_version": "1.0",
+      "owner": null,
+      "referenced_at": null
+    },
+    "cowork:00a6d3e3483f9644aab3a1d70394b902": {
+      "source": "cowork",
+      "remote_id": "00a6d3e3483f9644aab3a1d70394b902",
+      "name": "xlsx",
+      "description": "Use this skill any time a spreadsheet file is the primary input or output. This means any task where the user wants to: open, read, edit, or fix an existing .xlsx, .xlsm, .csv, or .tsv file (e.g., adding columns, computing formulas, formatting, charting, cleaning messy data); create a new spreadsheet from scratch or from other data sources; or convert between tabular file formats. Trigger especially when the user references a spreadsheet file by name or path — even casually (like \"the xlsx in my downloads\") — and wants something done to it or produced from it. Also trigger for cleaning or restructuring messy tabular data files (malformed rows, misplaced headers, junk data) into proper spreadsheets. The deliverable must be a spreadsheet file. Do NOT trigger when the primary deliverable is a Word document, HTML report, standalone Python script, database pipeline, or Google Sheets API integration, even if tabular data is involved.",
+      "triggers": [],
+      "skill_version": "1.0",
+      "owner": null,
+      "referenced_at": null
+    },
+    "cowork:fdda7372b2e2075c65aefb9ca7a0037e": {
+      "source": "cowork",
+      "remote_id": "fdda7372b2e2075c65aefb9ca7a0037e",
+      "name": "huawei-intranet-search",
+      "description": "在华为内网系统（稼先、心声、3MS、support.huawei.com、EISDP、iLearning、w3 门户等）搜索文章、文档与资料。配合 browser-mcp 浏览器 MCP 访问内网，处理 SSO 登录态、域名目录、各系统页面陷阱与搜索 SOP。触发场景：搜华为内网文章、查稼先社区、查心声社区、查 3MS 平台、查华为技术支持网站/产品文档、查 EISDP、查 iLearning、从 w3 门户找入口、搜华为内部社区资料、内网搜索、采集内网产品文档。",
+      "triggers": [],
+      "skill_version": null,
+      "owner": null,
+      "referenced_at": null
+    }
+  }
+}

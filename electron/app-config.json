@@ -1,0 +1,12 @@
+{
+  "netcoworkBaseUrl": "http://172.20.10.2:5174",
+  "feedUrl": "",
+  "telemetryUrl": "",
+  "channel": "stable",
+  "devSkipAuth": false,
+  "authMode": "w3",
+  "w3BaseUrl": "https://uniportal.huawei.com",
+  "w3ClientId": "com.huawei.ipmastercowork",
+  "w3CallbackUrl": "https://ipmastercowork.gts.huawei.com/callBack",
+  "w3Scope": "base.profile"
+}

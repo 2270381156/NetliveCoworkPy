@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 642" width="100%" font-family="'Segoe UI','Microsoft YaHei',-apple-system,sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#64748b"/>
+    </marker>
+    <style>
+      text{fill:#1f2937}
+      .t{font-size:22px;font-weight:700}
+      .s{font-size:12.5px;fill:#6b7280}
+      .bt{font-size:14px;font-weight:700}
+      .bs{font-size:11.5px;fill:#475569}
+      .lbl{font-size:11px;fill:#64748b}
+      .blue{fill:#eff6ff;stroke:#3b82f6;stroke-width:1.5}
+      .green{fill:#f0fdf4;stroke:#22c55e;stroke-width:1.5}
+      .amber{fill:#fffbeb;stroke:#f59e0b;stroke-width:1.5}
+      .src{fill:#ffffff;stroke:#f59e0b;stroke-width:1.2}
+      .slate{fill:#f8fafc;stroke:#64748b;stroke-width:1.5}
+      .strip{fill:#f5f3ff;stroke:#c4b5fd;stroke-width:1.3}
+      .vis{fill:#ffffff;stroke:#94a3b8;stroke-width:1.3;stroke-dasharray:5 4}
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="900" height="642" fill="#ffffff"/>
+  <text class="t" x="30" y="36">Skill 子系统设计</text>
+  <text class="s" x="30" y="57">大模型“进入→使用”一个技能 → 执行器按技能名查路由表 → 转发给本地/云端来源 provider → 受控 shell 执行</text>
+
+  <!-- 概念条：技能结构 + 三层 -->
+  <rect class="strip" x="30" y="74" width="840" height="58" rx="10"/>
+  <text x="50" y="100" font-size="12.5"><tspan font-weight="700" fill="#6d28d9">技能 = 一个目录：</tspan>SKILL.md（说明书 + 元数据 name/description）· references/（资料）· scripts/（脚本）</text>
+  <text x="50" y="120" font-size="12.5"><tspan font-weight="700" fill="#6d28d9">三层渐进披露：</tspan>L1 发现（列进能力清单）→ L2 加载（读 SKILL.md 说明）→ L3 使用（列/读/跑）；L1·L2 引擎自动装配，L3 才由大模型调工具</text>
+
+  <!-- 大模型：两步 -->
+  <rect class="blue" x="140" y="150" width="620" height="74" rx="10"/>
+  <text class="bt" x="450" y="174" text-anchor="middle" fill="#1d4ed8">大模型</text>
+  <text class="bs" x="450" y="194" text-anchor="middle">① 进入技能：control__delegate_task(skill_name) → 派一个“绑定该技能”的子任务</text>
+  <text class="bs" x="450" y="212" text-anchor="middle">② 使用技能：调 skill_executor__list_files / read_file / exec_script（技能无关，只带 path/script）</text>
+
+  <line x1="450" y1="224" x2="450" y2="250" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <text class="lbl" x="460" y="242">②的三个工具进入执行器</text>
+
+  <!-- 执行器 provider -->
+  <rect class="blue" x="140" y="252" width="620" height="60" rx="10"/>
+  <text class="bt" x="450" y="276" text-anchor="middle" fill="#1d4ed8">技能执行器 provider（引擎内置，只有一个）</text>
+  <text class="bs" x="450" y="295" text-anchor="middle">路由表：技能名 → 由哪个 provider 负责（汇总各来源 provider 而来）· 按绑定的技能名派发</text>
+
+  <!-- 分叉到两个来源 provider -->
+  <line x1="380" y1="312" x2="232" y2="344" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="520" y1="312" x2="642" y2="344" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <text class="lbl" x="450" y="332" text-anchor="middle">查表 → 转发给负责的来源 provider（同协议）</text>
+
+  <!-- 本地来源 provider -->
+  <rect class="green" x="40" y="346" width="360" height="134" rx="10"/>
+  <text class="bt" x="220" y="374" text-anchor="middle" fill="#15803d">本地来源 provider · 永久存盘</text>
+  <text class="bs" x="220" y="399" text-anchor="middle">LocalSkillCapabilityProvider（引擎）</text>
+  <text class="bs" x="220" y="421" text-anchor="middle">直接读 skills_dir/&lt;技能&gt;/（常驻磁盘）</text>
+  <text class="bs" x="220" y="443" text-anchor="middle">用户导入 · 可发布到 cowork 市场</text>
+
+  <!-- 云端来源 provider（容器 + 两个市场源） -->
+  <rect class="amber" x="430" y="346" width="430" height="134" rx="10"/>
+  <text class="bt" x="645" y="368" text-anchor="middle" fill="#b45309">云端来源 provider（宿主）· 用完即删</text>
+  <text class="bs" x="645" y="388" text-anchor="middle">借用—归还：查引用(元数据) → 按 source 下载 → 临时目录 → 执行 → 删</text>
+
+  <rect class="src" x="446" y="404" width="196" height="52" rx="8"/>
+  <text class="bt" x="544" y="435" text-anchor="middle" fill="#b45309">cowork 源</text>
+
+  <rect class="src" x="648" y="404" width="196" height="52" rx="8"/>
+  <text class="bt" x="746" y="435" text-anchor="middle" fill="#b45309">mythos 源</text>
+
+  <!-- 汇合到执行 -->
+  <line x1="225" y1="480" x2="360" y2="510" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="645" y1="480" x2="540" y2="510" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <!-- 执行环境 -->
+  <rect class="slate" x="180" y="512" width="540" height="60" rx="10"/>
+  <text class="bt" x="450" y="536" text-anchor="middle" fill="#334155">执行：拼成 python &lt;脚本&gt; 交给 fs:shell 工具启动</text>
+  <text class="bs" x="450" y="555" text-anchor="middle">与 bash 命令共用受控环境：授权 · 共享 venv（随包 Python）· SKILL_DIR · 超时</text>
+
+  <!-- 可见性 & 一致性（正交） -->
+  <rect class="vis" x="30" y="588" width="840" height="42" rx="10"/>
+  <text x="50" y="614" font-size="12"><tspan font-weight="700" fill="#475569">可见性 &amp; 一致性：</tspan>mythos 技能按当前登录用户过滤；登录 / 引用变化后刷新路由索引，避免“能进技能却 SKILL_NOT_FOUND”</text>
+</svg>

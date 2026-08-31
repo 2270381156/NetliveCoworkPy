@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 90" width="240" height="90">
+  <defs>
+    <clipPath id="icon-clip">
+      <rect x="0" y="0" width="90" height="90"/>
+    </clipPath>
+
+    <!-- Green gradient (original direction, x shifted +10) -->
+    <linearGradient id="green-grad" x1="11" y1="0" x2="47" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#a8d800"/>
+    </linearGradient>
+
+    <linearGradient id="arc-grad" x1="7" y1="43" x2="87" y2="43" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+
+    <linearGradient id="star-grad" x1="11" y1="0" x2="83" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="cowork-grad" x1="97" y1="30" x2="215" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+
+    <linearGradient id="scan-grad" x1="13" y1="0" x2="81" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#a8d800" stop-opacity="0"/>
+      <stop offset="35%"  stop-color="#a8d800" stop-opacity="0.65"/>
+      <stop offset="65%"  stop-color="#3b82f6" stop-opacity="0.65"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </linearGradient>
+
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="node-glow" x="-150%" y="-150%" width="400%" height="400%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="text-glow" x="-5%" y="-20%" width="110%" height="140%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- ── ICON ── -->
+  <g>
+    <!-- Arc rings: center(45,45) r=40, gap at upper-left -->
+    <path d="M 47 6 A 40 40 0 1 0 87 46"
+          fill="none" stroke="url(#arc-grad)" stroke-width="1.8"
+          stroke-linecap="round" opacity="0.60"/>
+    <path d="M 47 14 A 32 32 0 1 0 79 46"
+          fill="none" stroke="url(#arc-grad)" stroke-width="0.8"
+          stroke-dasharray="4,5" stroke-linecap="round" opacity="0.30"/>
+
+    <!-- Ghost trails (original +10 on x) -->
+    <polygon points="83,39 47,39 47,75" fill="#3b82f6" opacity="0.28" transform="translate(4,3)"/>
+    <polygon points="83,39 47,39 47,75" fill="#3b82f6" opacity="0.14" transform="translate(8,6)"/>
+
+    <polygon points="11,52 47,16 47,52" fill="url(#green-grad)" filter="url(#glow)"/>
+    <line x1="11" y1="52" x2="47" y2="16"
+          stroke="#d9ff70" stroke-width="1.8" stroke-linecap="round"
+          opacity="0.75" filter="url(#glow)"/>
+
+    <polygon points="83,39 47,39 47,75" fill="#3b82f6" opacity="0.75" filter="url(#glow)"/>
+    <line x1="83" y1="39" x2="47" y2="75"
+          stroke="#93c5fd" stroke-width="1.2" stroke-linecap="round"
+          opacity="0.60" filter="url(#glow)"/>
+
+    <!-- Scan line -->
+    <rect x="13" y="45" width="68" height="1.8" fill="url(#scan-grad)" rx="1"/>
+
+    <!-- Four acute-angle nodes -->
+    <circle cx="47" cy="16" r="4" fill="url(#star-grad)" filter="url(#node-glow)"/>
+    <circle cx="83" cy="39" r="4" fill="url(#star-grad)" filter="url(#node-glow)"/>
+    <circle cx="47" cy="75" r="4" fill="url(#star-grad)" filter="url(#node-glow)"/>
+    <circle cx="11" cy="52" r="4" fill="url(#star-grad)" filter="url(#node-glow)"/>
+  </g>
+
+  <!-- ── Cowork ── -->
+  <text x="97" y="43"
+        font-family="'Segoe UI','Inter','Helvetica Neue',Arial,sans-serif"
+        font-size="33" font-weight="700" letter-spacing="0.3"
+        fill="url(#cowork-grad)" filter="url(#text-glow)">Cowork</text>
+
+  <!-- ── IPMaster ── -->
+  <rect x="97"  y="57" width="5" height="19" fill="#a8d800"/>
+  <polygon points="97,57 102,57 116,76 111,76" fill="#a8d800"/>
+  <rect x="111" y="57" width="5" height="19" fill="#3b82f6"/>
+  <text x="119" y="76"
+        font-family="'Segoe UI','Inter','Helvetica Neue',Arial,sans-serif"
+        font-size="26" font-weight="700" letter-spacing="-0.5"
+        fill="#000000">etLIVE</text>
+
+</svg>

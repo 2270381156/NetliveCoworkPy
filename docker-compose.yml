@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: IPMC_postgres
+    environment:
+      POSTGRES_USER: CtxWeft
+      POSTGRES_PASSWORD: IPMC_dev
+      POSTGRES_DB: CtxWeft
+    ports:
+      - "5432:5432"
+    volumes:
+      - IPMC_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U CtxWeft -d CtxWeft"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  netlivecowork:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: netlivecowork
+    ports:
+      - "8000:8000"
+    environment:
+      IPMC_DATABASE_URL: postgresql+asyncpg://CtxWeft:IPMC_dev@postgres:5432/CtxWeft
+      IPMC_LLM_PROVIDER: "${IPMC_LLM_PROVIDER:-mock}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["netlivecowork", "serve", "--port", "8000"]
+
+volumes:
+  IPMC_pgdata:

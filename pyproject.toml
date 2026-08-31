@@ -1,0 +1,70 @@
+[project]
+name = "netlivecowork"
+version = "0.4.23"
+description = "Service shell for ctx-weft: REST API, SSE, Postgres, LLM adapters."
+requires-python = ">=3.11"
+dependencies = [
+    "ctx-weft[builtin,skills]",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "aiosqlite>=0.19",
+    "alembic>=1.13",
+    "httpx>=0.27",
+    "requests>=2.32",
+    "beautifulsoup4>=4.12",
+    "pyyaml>=6.0",
+    "anthropic>=0.30",
+    "openai>=1.0",
+    "typing-extensions>=4.0",
+    "python-multipart>=0.0.9",
+    "mcp>=1.27.2",
+    "python-dotenv>=1.0",
+    "psutil>=5.9.0",
+    "truststore>=0.10.4",
+    # strict-auto（全自动）的 Low 完整性写入边界靠 pywin32 起 Low 进程/标 Low/建 Job。仅 Windows；
+    # 缺它 → low_integrity.windows.available()=False → 自动模式静默降级为无 OS 边界（见 low_integrity/windows.py）。
+    "pywin32>=306; sys_platform == 'win32'",
+]
+
+[tool.uv.sources]
+# core 以 vendored 的源码 wheel 交付（含 .py，供 dev/协作者 uv sync 后 IDE 跳转/断点调试）。
+# 打包 app 侧无泄源风险：PyInstaller 把 ctx_weft 冻结成 PYZ 字节码，不入 .py（见 packaging/netlive-cowork.spec）。
+ctx-weft = { path = "vendor/ctx_weft-0.1.0-py3-none-any.whl" }
+
+[project.scripts]
+netlivecowork = "netlivecowork.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "anyio>=4.13.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/netlivecowork"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths    = ["tests"]
+pythonpath   = ["."]   # repo root on sys.path so tests can `import _run` (desktop entry)
+addopts      = "-ra -q --strict-markers"
+markers      = [
+    "integration: end-to-end integration tests",
+    "slow: marks tests as slow",
+]
+
+[tool.ruff]
+line-length    = 100
+target-version = "py311"
+src            = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "RUF"]
+ignore = ["E501"]

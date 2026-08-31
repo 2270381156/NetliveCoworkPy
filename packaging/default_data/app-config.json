@@ -1,0 +1,12 @@
+{
+  "netcoworkBaseUrl": "https://ipmastercowork.gts.huawei.com",
+  "substrateBaseUrl": "https://ipmastercowork.gts.huawei.com/substrate",
+  "feedUrl": "https://ipmastercowork.gts.huawei.com/update",
+  "telemetryUrl": "https://ipmastercowork.gts.huawei.com/update",
+  "channel": "stable",
+  "authMode": "w3",
+  "w3BaseUrl": "https://uniportal.huawei.com",
+  "w3ClientId": "com.huawei.ipmastercowork",
+  "w3CallbackUrl": "https://ipmastercowork.gts.huawei.com/callBack",
+  "w3Scope": "base.profile"
+}

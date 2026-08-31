@@ -1,0 +1,96 @@
+{
+  "meta": { "name": "典型数据中心组网（Spine-Leaf）", "layoutDirection": "TB" },
+
+  "encoding": {
+    "deviceRoles": {
+      "internet":       { "h": 40, "glyph": "cloud",  "legend": "Internet", "icon": "internet" },
+      "border-router":  { "h": 46, "legend": "边界路由器", "critical": true, "icon": "core-router" },
+      "firewall":       { "h": 46, "legend": "防火墙", "critical": true, "icon": "firewall" },
+      "spine":          { "h": 46, "legend": "Spine 交换机", "critical": true, "icon": "core-switch" },
+      "leaf":           { "h": 44, "legend": "Leaf 交换机（ToR）", "icon": "tor-switch" },
+      "server":         { "h": 34, "legend": "通用服务器", "icon": "generic-server" },
+      "db":              { "h": 34, "legend": "数据库服务器", "icon": "database" },
+      "storage":        { "h": 34, "legend": "存储阵列", "icon": "storage-array" },
+      "ellipsis":       { "w": 30, "h": 28, "fill": "none", "stroke": "none", "glyph": "ellipsis", "legend": "省略（同组更多设备）", "decorative": true }
+    },
+    "linkTypes": {
+      "normal": { "legend": "普通链路" },
+      "ha":     { "dash": "5,4", "legend": "HA 横链" },
+      "trunk":  { "bundle": 2, "legend": "Trunk（多线聚合）" }
+    },
+    "connTypes": {
+      "uplink":     { "shape": "circle", "fill": "#10b981", "legend": "上行口" },
+      "dcn-100ge":  { "shape": "circle", "fill": "#3b82f6", "legend": "DCN 100GE（Spine-Leaf）" },
+      "dci-100ge":  { "shape": "square", "fill": "#ef4444", "legend": "DCI 100GE（防火墙-Spine）" },
+      "access-1ge": { "shape": "circle", "fill": "#64748b", "legend": "接入口 1GE（Leaf-服务器）" }
+    },
+    "zoneTypes": {
+      "pod": { "legend": "Pod（机柜组）" }
+    }
+  },
+
+  "devices": [
+    { "id": "INET", "role": "internet", "tier": 0, "label": "Internet" },
+
+    { "id": "BR1", "role": "border-router", "tier": 1, "label": "BR-1", "haPair": "BR2" },
+    { "id": "BR2", "role": "border-router", "tier": 1, "label": "BR-2", "haPair": "BR1" },
+    { "id": "FW1", "role": "firewall", "tier": 2, "label": "FW-1", "haPair": "FW2" },
+    { "id": "FW2", "role": "firewall", "tier": 2, "label": "FW-2", "haPair": "FW1" },
+
+    { "id": "SPINE1", "role": "spine", "tier": 3, "label": "Spine-1" },
+    { "id": "SPINE2", "role": "spine", "tier": 3, "label": "Spine-2" },
+
+    { "id": "LEAF1", "role": "leaf", "tier": 4, "label": "Leaf-1" },
+    { "id": "LEAF2", "role": "leaf", "tier": 4, "label": "Leaf-2" },
+    { "id": "LEAF3", "role": "leaf", "tier": 4, "label": "Leaf-3" },
+    { "id": "LEAF4", "role": "leaf", "tier": 4, "label": "Leaf-4" },
+
+    { "id": "SRV1", "role": "server", "tier": 5, "label": "Srv-1" },
+    { "id": "SRV2", "role": "server", "tier": 5, "label": "Srv-2" },
+    { "id": "SRV3", "role": "server", "tier": 5, "label": "Srv-3" },
+    { "id": "SRV4", "role": "db",     "tier": 5, "label": "DB-1" },
+    { "id": "SRV5", "role": "server", "tier": 5, "label": "Srv-5" },
+    { "id": "SRV6", "role": "server", "tier": 5, "label": "Srv-6" },
+    { "id": "SRV7", "role": "server", "tier": 5, "label": "Srv-7" },
+    { "id": "SRV8", "role": "storage", "tier": 5, "label": "存储-1" }
+  ],
+
+  "links": [
+    { "a": "INET", "b": "BR1", "type": "normal", "aConn": "uplink", "bConn": "uplink" },
+    { "a": "INET", "b": "BR2", "type": "normal", "aConn": "uplink", "bConn": "uplink" },
+    { "a": "BR1",  "b": "BR2", "type": "ha" },
+    { "a": "BR1",  "b": "FW1", "type": "normal" },
+    { "a": "BR2",  "b": "FW2", "type": "normal" },
+    { "a": "FW1",  "b": "FW2", "type": "ha" },
+
+    { "a": "FW1", "b": "SPINE1", "type": "trunk", "aConn": "dci-100ge", "bConn": "dci-100ge" },
+    { "a": "FW1", "b": "SPINE2", "type": "trunk", "aConn": "dci-100ge", "bConn": "dci-100ge" },
+    { "a": "FW2", "b": "SPINE1", "type": "trunk", "aConn": "dci-100ge", "bConn": "dci-100ge" },
+    { "a": "FW2", "b": "SPINE2", "type": "trunk", "aConn": "dci-100ge", "bConn": "dci-100ge" },
+
+    { "a": "SPINE1", "b": "LEAF1", "type": "trunk", "aConn": "dcn-100ge", "bConn": "dcn-100ge" },
+    { "a": "SPINE1", "b": "LEAF2", "type": "trunk", "aConn": "dcn-100ge", "bConn": "dcn-100ge" },
+    { "a": "SPINE1", "b": "LEAF3", "type": "trunk", "aConn": "dcn-100ge", "bConn": "dcn-100ge" },
+    { "a": "SPINE1", "b": "LEAF4", "type": "trunk", "aConn": "dcn-100ge", "bConn": "dcn-100ge" },
+    { "a": "SPINE2", "b": "LEAF1", "type": "trunk", "aConn": "dcn-100ge", "bConn": "dcn-100ge" },
+    { "a": "SPINE2", "b": "LEAF2", "type": "trunk", "aConn": "dcn-100ge", "bConn": "dcn-100ge" },
+    { "a": "SPINE2", "b": "LEAF3", "type": "trunk", "aConn": "dcn-100ge", "bConn": "dcn-100ge" },
+    { "a": "SPINE2", "b": "LEAF4", "type": "trunk", "aConn": "dcn-100ge", "bConn": "dcn-100ge" },
+
+    { "a": "LEAF1", "b": "SRV1", "type": "normal", "aPort": "Gi0/0/1", "aConn": "access-1ge", "bConn": "access-1ge" },
+    { "a": "LEAF1", "b": "SRV2", "type": "normal", "aPort": "Gi0/0/2", "aConn": "access-1ge", "bConn": "access-1ge" },
+    { "a": "LEAF2", "b": "SRV3", "type": "normal", "aConn": "access-1ge", "bConn": "access-1ge" },
+    { "a": "LEAF2", "b": "SRV4", "type": "normal", "aConn": "access-1ge", "bConn": "access-1ge" },
+    { "a": "LEAF3", "b": "SRV5", "type": "normal", "aConn": "access-1ge", "bConn": "access-1ge" },
+    { "a": "LEAF3", "b": "SRV6", "type": "normal", "aConn": "access-1ge", "bConn": "access-1ge" },
+    { "a": "LEAF4", "b": "SRV7", "type": "normal", "aConn": "access-1ge", "bConn": "access-1ge" },
+    { "a": "LEAF4", "b": "SRV8", "type": "normal", "aConn": "access-1ge", "bConn": "access-1ge" }
+  ],
+
+  "zones": [
+    { "id": "POD_A", "type": "pod", "label": "Pod A", "layout": "row", "tier": 4,
+      "members": ["LEAF1", "LEAF2", "SRV1", "SRV2", "SRV3", "SRV4"] },
+    { "id": "POD_B", "type": "pod", "label": "Pod B", "layout": "row", "tier": 4,
+      "members": ["LEAF3", "LEAF4", "SRV5", "SRV6", "SRV7", "SRV8"] }
+  ]
+}

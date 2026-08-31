@@ -1,0 +1,34 @@
+{
+  "name": "browser-mcp",
+  "version": "0.3.0",
+  "description": "Generic browser-automation MCP server via CDP Chrome (navigate/click/fill/evaluate/snapshot). Must be used together with a companion Skill that carries domain knowledge (URLs, SSO patterns, page quirks). Works with any skill.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "browser-mcp": "dist/index.js"
+  },
+  "files": ["dist", "README.md"],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "node --test test/*.test.mjs"
+  },
+  "keywords": ["mcp", "browser", "cdp", "chrome", "automation"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

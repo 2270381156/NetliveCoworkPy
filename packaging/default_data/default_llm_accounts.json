@@ -1,0 +1,38 @@
+[
+  {
+    "account": "NIS-MiniMax",
+    "style": "anthropic",
+    "api_key": "enc:v1:EnOYAL1L9XZbK1ibsChfKa9iTNBANJYl78hS1yf4ZXxjfWScZEGaJl4FB69T6quiguDOlI0obMx_zAznNW3S-w==",
+    "base_url": "http://10.244.224.247:10020/v1",
+    "model": "MiniMax-M2.7",
+    "context_limit": 200000,
+    "timeout_sec": 120
+  },
+  {
+    "account": "NIS-glm",
+    "style": "openai",
+    "api_key": "enc:v1:AH3QDLwd9XtYLAXIvCgIev9pEYYSNpsv6pcIgHTzMCljK2Q=",
+    "base_url": "https://aigateway.huawei.com/v1",
+    "model": "dfa_glm-52",
+    "context_limit": 200000,
+    "timeout_sec": 120
+  },
+  {
+    "account": "NIS-deepseek",
+    "style": "openai",
+    "api_key": "enc:v1:AH3QDLwd9XtYLAXIvCgIev9pEYYSNpsv6pcIgHTzMCljK2Q=",
+    "base_url": "https://aigateway.huawei.com/v1",
+    "model": "dfa_self_deepseek_v4_flash",
+    "context_limit": 200000,
+    "timeout_sec": 120
+  },
+  {
+    "account": "HIS",
+    "style": "openai",
+    "api_key": "enc:v1:AH3QDehJ8i5YLgOb7nxdJ6s1FdscMc9165kEgyj4YiljKTs=",
+    "base_url": "https://aigateway.huawei.com/v1/chat/completions",
+    "model": "dfa_DeepSeek-V4-Flash",
+    "context_limit": 128000,
+    "timeout_sec": 120
+  }
+]

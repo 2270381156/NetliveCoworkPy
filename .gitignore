@@ -1,0 +1,79 @@
+# ── 密钥 / 本地配置 ───────────────────────────────────────────────────────────
+# llm_configs 里是带明文 api_key 的 LLM 账号配置，只应存在于本地。
+resources/llm_configs/
+.env
+.env.*
+!.env.example
+
+# ── 只读参考副本 ──────────────────────────────────────────────────────────────
+# ctx_weft 从 .venv/Lib/site-packages/ 复制而来，仅供阅读 agent 实现，绝不修改。
+# 实际运行加载的始终是 .venv 里那份；这里是同一份代码的可检索镜像。
+/vendor/ctx_weft/
+
+# ── 运行时数据 ────────────────────────────────────────────────────────────────
+# 源码直跑时 IPMC_DATA_DIR 未设 → SQLite 落在项目根 data/（打包版落在 AppData）。
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+# ── 构建产物 ──────────────────────────────────────────────────────────────────
+# /build/ = PyInstaller (build/dist) + electron-builder (build/electron-dist)
+/build/
+dist/
+*.tsbuildinfo
+*.spec.bak
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# 虚拟环境（.venv 内部自带 .gitignore，这里兜底其它命名）
+.venv/
+venv/
+env/
+
+# ── Node / 前端 ───────────────────────────────────────────────────────────────
+node_modules/
+.vite/
+coverage/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Playwright：提交 visual/__baseline__/ 基线，忽略运行产物
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+capture/smoke-out/
+
+# ── 日志 ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── 编辑器 / 操作系统 ─────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# cowork 套件包：本分支没有产生它的代码（那在 demo/experimental 上），但它未入库、
+# 切分支时会原地留下。忽略掉，免得哪天 git add -A 把别的分支的产物带进来。
+/resources/cowork-packages/
+
+# skill 包目录：已废弃。打包脚本不再打 skill zip（topology-drawing 的源仍在
+# resources/skills/ 下，只是不再产出发布包）。留这条防止旧产物被误 add 回来。
+/resources/skill-packages/

@@ -1,0 +1,247 @@
+{
+  "core-switch": {
+    "category": "switch",
+    "legend_zh": "核心交换机",
+    "deviceType": true,
+    "blue": "svg/blue/core-switch.svg",
+    "yellow": "svg/yellow/core-switch.svg"
+  },
+  "agg-switch": {
+    "category": "switch",
+    "legend_zh": "汇聚交换机",
+    "deviceType": true,
+    "blue": "svg/blue/agg-switch.svg",
+    "yellow": "svg/yellow/agg-switch.svg"
+  },
+  "access-switch": {
+    "category": "switch",
+    "legend_zh": "接入交换机",
+    "deviceType": true,
+    "blue": "svg/blue/access-switch.svg",
+    "yellow": "svg/yellow/access-switch.svg"
+  },
+  "generic-switch": {
+    "category": "switch",
+    "legend_zh": "通用交换机",
+    "deviceType": true,
+    "blue": "svg/blue/generic-switch.svg",
+    "yellow": "svg/yellow/generic-switch.svg"
+  },
+  "stacked-switch": {
+    "category": "switch",
+    "legend_zh": "堆叠交换机",
+    "deviceType": true,
+    "blue": "svg/blue/stacked-switch.svg",
+    "yellow": "svg/yellow/stacked-switch.svg"
+  },
+  "tor-switch": {
+    "category": "switch",
+    "legend_zh": "TOR交换机",
+    "deviceType": true,
+    "blue": "svg/blue/tor-switch.svg",
+    "yellow": "svg/yellow/tor-switch.svg"
+  },
+  "core-router": {
+    "category": "router",
+    "legend_zh": "核心路由器",
+    "deviceType": true,
+    "blue": "svg/blue/core-router.svg",
+    "yellow": "svg/yellow/core-router.svg"
+  },
+  "generic-router": {
+    "category": "router",
+    "legend_zh": "通用路由器",
+    "deviceType": true,
+    "blue": "svg/blue/generic-router.svg",
+    "yellow": "svg/yellow/generic-router.svg"
+  },
+  "firewall": {
+    "category": "security",
+    "legend_zh": "防火墙",
+    "deviceType": true,
+    "blue": "svg/blue/firewall.svg",
+    "yellow": "svg/yellow/firewall.svg"
+  },
+  "virtual-firewall": {
+    "category": "security",
+    "legend_zh": "虚拟防火墙",
+    "deviceType": true,
+    "blue": "svg/blue/virtual-firewall.svg",
+    "yellow": "svg/yellow/virtual-firewall.svg"
+  },
+  "nip": {
+    "category": "security",
+    "legend_zh": "NIP入侵防御",
+    "deviceType": true,
+    "blue": "svg/blue/nip.svg",
+    "yellow": "svg/yellow/nip.svg"
+  },
+  "anti-ddos": {
+    "category": "security",
+    "legend_zh": "Anti-DDoS清洗检测设备",
+    "deviceType": true,
+    "blue": "svg/blue/anti-ddos.svg",
+    "yellow": "svg/yellow/anti-ddos.svg"
+  },
+  "load-balancer": {
+    "category": "security",
+    "legend_zh": "负载均衡器",
+    "deviceType": true,
+    "blue": "svg/blue/load-balancer.svg",
+    "yellow": "svg/yellow/load-balancer.svg"
+  },
+  "ap": {
+    "category": "wireless",
+    "legend_zh": "AP",
+    "deviceType": true,
+    "blue": "svg/blue/ap.svg",
+    "yellow": "svg/yellow/ap.svg"
+  },
+  "ac": {
+    "category": "wireless",
+    "legend_zh": "AC无线控制器",
+    "deviceType": true,
+    "blue": "svg/blue/ac.svg",
+    "yellow": "svg/yellow/ac.svg"
+  },
+  "antenna-indoor": {
+    "category": "wireless",
+    "legend_zh": "室内天线",
+    "deviceType": true,
+    "blue": "svg/blue/antenna-indoor.svg",
+    "yellow": "svg/yellow/antenna-indoor.svg"
+  },
+  "antenna-outdoor": {
+    "category": "wireless",
+    "legend_zh": "室外天线",
+    "deviceType": true,
+    "blue": "svg/blue/antenna-outdoor.svg",
+    "yellow": "svg/yellow/antenna-outdoor.svg"
+  },
+  "cloud-computing": {
+    "category": "cloud",
+    "legend_zh": "云计算",
+    "deviceType": false,
+    "blue": "svg/blue/cloud-computing.svg",
+    "yellow": null
+  },
+  "network-cloud": {
+    "category": "cloud",
+    "legend_zh": "网络云",
+    "deviceType": false,
+    "blue": "svg/blue/network-cloud.svg",
+    "yellow": null
+  },
+  "virtualization-platform": {
+    "category": "cloud",
+    "legend_zh": "虚拟化管理平台",
+    "deviceType": true,
+    "blue": "svg/blue/virtualization-platform.svg",
+    "yellow": "svg/yellow/virtualization-platform.svg"
+  },
+  "vm": {
+    "category": "cloud",
+    "legend_zh": "虚拟机",
+    "deviceType": true,
+    "blue": "svg/blue/vm.svg",
+    "yellow": "svg/yellow/vm.svg"
+  },
+  "vswitch": {
+    "category": "cloud",
+    "legend_zh": "vSwitch",
+    "deviceType": true,
+    "blue": "svg/blue/vswitch.svg",
+    "yellow": "svg/yellow/vswitch.svg"
+  },
+  "web-server": {
+    "category": "server",
+    "legend_zh": "Web服务器",
+    "deviceType": true,
+    "blue": "svg/blue/web-server.svg",
+    "yellow": "svg/yellow/web-server.svg"
+  },
+  "ftp-server": {
+    "category": "server",
+    "legend_zh": "FTP服务器",
+    "deviceType": true,
+    "blue": "svg/blue/ftp-server.svg",
+    "yellow": "svg/yellow/ftp-server.svg"
+  },
+  "mail-server": {
+    "category": "server",
+    "legend_zh": "邮件服务器",
+    "deviceType": true,
+    "blue": "svg/blue/mail-server.svg",
+    "yellow": "svg/yellow/mail-server.svg"
+  },
+  "database": {
+    "category": "server",
+    "legend_zh": "数据库",
+    "deviceType": true,
+    "blue": "svg/blue/database.svg",
+    "yellow": "svg/yellow/database.svg"
+  },
+  "storage-array": {
+    "category": "server",
+    "legend_zh": "存储阵列",
+    "deviceType": true,
+    "blue": "svg/blue/storage-array.svg",
+    "yellow": "svg/yellow/storage-array.svg"
+  },
+  "generic-server": {
+    "category": "server",
+    "legend_zh": "通用服务器",
+    "deviceType": true,
+    "blue": "svg/blue/generic-server.svg",
+    "yellow": "svg/yellow/generic-server.svg"
+  },
+  "pc": {
+    "category": "client",
+    "legend_zh": "PC",
+    "deviceType": true,
+    "blue": "svg/blue/pc.svg",
+    "yellow": "svg/yellow/pc.svg"
+  },
+  "laptop": {
+    "category": "client",
+    "legend_zh": "笔记本电脑",
+    "deviceType": true,
+    "blue": "svg/blue/laptop.svg",
+    "yellow": "svg/yellow/laptop.svg"
+  },
+  "ip-phone": {
+    "category": "client",
+    "legend_zh": "IP电话",
+    "deviceType": true,
+    "blue": "svg/blue/ip-phone.svg",
+    "yellow": "svg/yellow/ip-phone.svg"
+  },
+  "printer": {
+    "category": "client",
+    "legend_zh": "打印机",
+    "deviceType": true,
+    "blue": "svg/blue/printer.svg",
+    "yellow": "svg/yellow/printer.svg"
+  },
+  "internet": {
+    "category": "generic",
+    "legend_zh": "Internet",
+    "deviceType": false,
+    "blue": "svg/blue/internet.svg",
+    "yellow": null
+  },
+  "nms-generic": {
+    "category": "management",
+    "legend_zh": "通用网管",
+    "deviceType": true,
+    "blue": "svg/blue/nms-generic.svg",
+    "yellow": "svg/yellow/nms-generic.svg"
+  },
+  "admin": {
+    "category": "management",
+    "legend_zh": "网络管理员",
+    "deviceType": false,
+    "blue": "svg/blue/admin.svg",
+    "yellow": null
+  }
+}

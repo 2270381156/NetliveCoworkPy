@@ -1,0 +1,11 @@
+[
+  { "sessionId": "ses_synth", "frame": { "type": "init", "session": { "id": "ses_synth", "user_prompt": "hi", "goal": "synthetic observer test", "status": "RUNNING", "template_id": "default", "root_agent_id": "agt_1", "token_budget": 0, "input_tokens_used": 0, "output_tokens_used": 0, "context_tokens": 0, "failure_counter": 0, "llm_account": "deepseek", "llm_model": "deepseek-v4-flash", "workspace": "C:/ws", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z" }, "messages": [ { "role": "user", "content": "你好", "created_at": "2026-01-01T00:00:00Z" } ] } },
+  { "sessionId": "ses_synth", "frame": { "type": "history", "events": [] } },
+  { "sessionId": "ses_synth", "frame": { "type": "text_delta", "delta": "好的" } },
+  { "sessionId": "ses_synth", "frame": { "type": "text_done", "text": "好的,我来处理。", "created_at": "2026-01-01T00:00:01Z" } },
+  { "sessionId": "ses_synth", "frame": { "type": "observer_reasoning_delta", "delta": "(live 不处理 observer 推理,应被忽略)" } },
+  { "sessionId": "ses_synth", "frame": { "type": "observer_text_delta", "delta": "任务" } },
+  { "sessionId": "ses_synth", "frame": { "type": "observer_text_delta", "delta": "已达成目标。" } },
+  { "sessionId": "ses_synth", "frame": { "type": "observer_text_done", "text": "任务已达成目标。", "round_label": "观察 #1", "created_at": "2026-01-01T00:00:02Z" } },
+  { "sessionId": "ses_synth", "frame": { "type": "done", "final_status": "SUCCEEDED" } }
+]

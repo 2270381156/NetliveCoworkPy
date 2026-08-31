@@ -1,0 +1,120 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* ── Design tokens → Tailwind 工具类(架构文档 §3.1)──────────────────────────
+   把 :root 的 CSS 变量暴露成 Tailwind v4 颜色 token,于是 `var(--blue)` ≡ `bg-blue`
+   为同一来源。迁移后的代码用 `bg-bg1` / `text-t1` / `border-border` 等,不再写裸 hex
+   或内联 style。:root 仍是唯一真值源(下方),@theme 只是引用它生成工具类;Tailwind
+   默认色阶(red-500/gray-400…)不受影响,仍可用。 */
+@theme {
+  --color-bg0: var(--bg0);
+  --color-bg1: var(--bg1);
+  --color-bg2: var(--bg2);
+  --color-bg3: var(--bg3);
+  --color-border: var(--border);
+  --color-border2: var(--border2);
+  --color-blue: var(--blue);
+  --color-teal: var(--teal);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+  --color-green: var(--green);
+  --color-t1: var(--t1);
+  --color-t2: var(--t2);
+  --color-t3: var(--t3);
+}
+
+:root {
+  --bg0: #f0f4fa;
+  --bg1: #ffffff;
+  --bg2: #f5f8fe;
+  --bg3: #eaf0fb;
+  --border: #dde6f3;
+  --border2: #c6d5eb;
+  --blue: #2563eb;
+  --blue-dim: rgba(37, 99, 235, .09);
+  --blue-glow: rgba(37, 99, 235, .2);
+  --teal: #0891b2;
+  --amber: #d97706;
+  --red: #dc2626;
+  --green: #16a34a;
+  --t1: #0f1f3d;
+  --t2: #3d5a80;
+  --t3: #8aa3bf;
+  --shadow: 0 1px 4px rgba(15, 31, 61, .07);
+  --shadow2: 0 4px 16px rgba(15, 31, 61, .1);
+  --r: 8px;
+  --r2: 12px;
+  --r3: 16px;
+  --font-ui: system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --tr: .15s ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg0);
+  color: var(--t1);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--t3);
+}
+
+/* Message animations */
+@keyframes msg-fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes t-bounce {
+  0%, 80%, 100% { transform: scale(.7); opacity: .4; }
+  40%           { transform: scale(1.1); opacity: 1; }
+}
+
+/* Copy button — hidden until row hovered */
+.msg-row .copy-btn { opacity: 0; transition: opacity var(--tr); }
+.msg-row:hover .copy-btn { opacity: 1; }
+
+/* Prose overrides */
+.prose code::before,
+.prose code::after {
+  content: '' !important;
+}
+
+/* Markdown code/diagram blocks: the typography plugin defaults `pre` to a dark
+   slate background. Use the conventional light-gray instead so fenced code,
+   ASCII diagrams, etc. match normal markdown rendering (and the inline #f6f8fa
+   set in mdComponents). Scoped to chat bubbles (.msg-md) and the file-preview
+   markdown viewer (.md-doc) so it never touches other prose. */
+.msg-md pre,
+.md-doc pre {
+  background: #f6f8fa !important;
+  color: var(--t1) !important;
+}
+.msg-md pre code,
+.md-doc pre code {
+  background: transparent !important;
+  color: var(--t1) !important;
+}

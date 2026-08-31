@@ -1,0 +1,92 @@
+{
+  "name": "netlive-cowork",
+  "version": "0.4.23",
+  "description": "NetLIVE Cowork Desktop Application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env ELECTRON_DEV=1 electron .",
+    "build": "electron-builder build --win",
+    "build:dir": "electron-builder build --win --dir",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^34.3.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.netlive-cowork.desktop",
+    "productName": "NetLIVE Cowork",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "http://localhost:8384",
+        "channel": "latest"
+      }
+    ],
+    "copyright": "NetLIVE Cowork",
+    "icon": "assets/icon",
+    "directories": {
+      "output": "../build/electron-dist"
+    },
+    "files": [
+      "assets/**/*",
+      "main.js",
+      "preload.js",
+      "telemetry.js",
+      "updater.js",
+      "lib/**/*.js",
+      "app-config.json",
+      "branding.json",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../build/dist/netlive-cowork",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../packaging/default_data",
+        "to": "default_data",
+        "filter": [
+          "**/*",
+          "!.env.example"
+        ]
+      }
+    ],
+    "win": {
+      "executableName": "electron",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "NetLIVE Cowork",
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "language": "2052"
+    },
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    }
+  }
+}

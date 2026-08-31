@@ -1,0 +1,67 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '请输入要打包的版本号 (例如: 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    
+    # 【核心修复】显式赋予该工作流创建/修改 Release 的写权限
+    permissions:
+      contents: write
+    
+    steps:
+      # 1. 拉取仓库代码
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. 备好 Node
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 3. 备好 uv
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      # 4. 真正打包 —— 将输入的版本号作为参数传递给 PowerShell 脚本
+      - name: Build (build_electron.ps1)
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build_electron.ps1 -Version "${{ github.event.inputs.version }}"
+
+      # # 5. 把产物传出来供下载
+      # - name: Upload installer
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: windows-installer
+      #     path: build/electron-dist/*
+      #     if-no-files-found: warn
+      #     retention-days: 14
+
+      # 【核心改动】不再使用 upload-artifact，改用 gh-release 直接发布到 Release
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # 使用你输入的版本号作为 Tag 和 Release 标题
+          tag_name: v${{ github.event.inputs.version }}
+          name: Release v${{ github.event.inputs.version }}
+          # 包含你要上传的打包产物路径
+          files: build/electron-dist/*
+          # 如果你不想直接公开，可以设置为草稿(true)或预发布(true)
+          draft: false
+          prerelease: false
+          # 加上下面这两行核心配置：
+          append_body: true # 每次覆盖时累加描述
+          make_latest: true  # 如果 Tag 已存在，则直接覆盖并更新该 Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

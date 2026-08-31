@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Playwright(提交 visual/__baseline__/ 基线,忽略运行产物)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Playwright driver 截图输出(临时)
+capture/smoke-out/

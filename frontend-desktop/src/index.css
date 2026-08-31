@@ -1,0 +1,195 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+:root {
+  --bg0: #f0f4fa;
+  --bg1: #ffffff;
+  --bg2: #f5f8fe;
+  --bg3: #eaf0fb;
+  --border: #dde6f3;
+  --border2: #c6d5eb;
+  --blue: #2563eb;
+  --blue-dim: rgba(37, 99, 235, .09);
+  --blue-glow: rgba(37, 99, 235, .2);
+  --teal: #0891b2;
+  --amber: #d97706;
+  --red: #dc2626;
+  --green: #16a34a;
+  --t1: #0f1f3d;
+  --t2: #3d5a80;
+  --t3: #8aa3bf;
+  --shadow: 0 1px 4px rgba(15, 31, 61, .07);
+  --shadow2: 0 4px 16px rgba(15, 31, 61, .1);
+  --r: 8px;
+  --r2: 12px;
+  --r3: 16px;
+  --font-ui: system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --tr: .15s ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg0);
+  color: var(--t1);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--t3);
+}
+
+/* 输入框滚动条 —— 用标准属性而不是上面那套 ::-webkit-scrollbar 自绘。
+   自绘滚动条在 Chromium 里是元素的一部分，会继承 textarea 的 cursor（一直是 I 形），
+   而且全局那条只有 4px、几乎抓不住。标准属性走原生滚动条：命中区正常、指针正常变箭头。
+   两者同时命中同一元素时 Chromium 让标准属性优先，所以这里不必再清 webkit 规则。 */
+.ta-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+
+/* 会话内查找（Ctrl+F）命中高亮：CSS Custom Highlight API。
+   chat-find = 可见的其它命中（浅蓝底）；chat-find-active = 当前命中行的命中词（深蓝底白字）。 */
+::highlight(chat-find) {
+  background: rgba(59, 130, 246, 0.28);
+}
+::highlight(chat-find-active) {
+  background: var(--blue);
+  color: #fff;
+}
+
+/* Message animations */
+@keyframes msg-fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes t-bounce {
+  0%, 80%, 100% { transform: scale(.7); opacity: .4; }
+  40%           { transform: scale(1.1); opacity: 1; }
+}
+
+/* 骂人彩蛋的收尾提示：一条动画包完整生命周期——进场淡入、停留、到期淡出。
+   时长与 ChatPanel 里移除元素的定时器对齐（9s），所以看到的是"自己散掉"而不是
+   "啪一下没了"。分两个 state 做淡出也行，但那要多一次渲染和一个额外定时器。 */
+@keyframes notice-life {
+  0%   { opacity: 0; transform: translateY(4px); }
+  3%   { opacity: 1; transform: none; }
+  90%  { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-2px); }
+}
+/* 骂人彩蛋：从屏幕深处朝用户脸上扔💩（见 components/PoopRain.tsx）。
+   translate 放在 scale 前面：transform 从右往左作用，先缩放再位移的话，位移量会被
+   放大十几倍，直接飞到天外。位移用 vw/vh，元素本身才十几像素，按自身尺寸算飞不出屏幕。 */
+@keyframes poop-throw {
+  from {
+    transform: translate(-50%, -50%) scale(.06) rotate(0deg);
+    opacity: 0;
+  }
+  15% { opacity: .8; }
+  80% { opacity: .8; }
+  to {
+    transform:
+      translate(calc(-50% + var(--poop-dx, 0vw)), calc(-50% + var(--poop-dy, 0vh)))
+      scale(var(--poop-scale, 10))
+      rotate(var(--poop-spin, 180deg));
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes poop-throw { from, to { opacity: 0; } }
+}
+/* Task capsule —— agent 干活时的「氛围感」：过程是背景活动，不喧宾夺主。
+   文字扫过一道柔和高光（而非闪烁），传达"正在进行"又不抢注意力。 */
+@keyframes task-shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+.task-shimmer {
+  background: linear-gradient(90deg, var(--t3) 20%, var(--t1) 45%, var(--t3) 70%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: task-shimmer 2.6s linear infinite;
+}
+/* 过程区：运行时整体后退一步（低对比、略微收敛），用户想细看再点开 */
+.task-process { animation: msg-fade-up .22s ease both; }
+.task-live    { opacity: .62; transition: opacity var(--tr); }
+.task-live:hover { opacity: 1; }
+
+/* Copy button — hidden until row hovered */
+.msg-row .copy-btn { opacity: 0; transition: opacity var(--tr); }
+.msg-row:hover .copy-btn { opacity: 1; }
+/* rewind：回退图标平时隐藏，hover 到该对话条才显示 */
+.msg-row .msg-rewind-btn { opacity: 0; transition: opacity var(--tr); }
+.msg-row:hover .msg-rewind-btn { opacity: 1; }
+
+/* rewind：回滚记录里的「撤销」文字链接——无边框，hover 才给一层淡琥珀底 */
+.rewind-undo-link { transition: background var(--tr); }
+.rewind-undo-link:hover { background: rgba(245,158,11,.16); }
+.rewind-undo-link:active { background: rgba(245,158,11,.24); }
+
+/* Per-block copy button (code/command blocks) — hidden until the block is hovered */
+.code-block .code-copy { opacity: 0; transition: opacity var(--tr); }
+.code-block:hover .code-copy { opacity: 1; }
+.code-block .code-copy:focus-visible { opacity: 1; }
+
+/* Prose overrides */
+.prose code::before,
+.prose code::after {
+  content: '' !important;
+}
+
+/* Markdown code/diagram blocks: the typography plugin defaults `pre` to a dark
+   slate background. Use the conventional light-gray instead so fenced code,
+   ASCII diagrams, etc. match normal markdown rendering (and the inline #f6f8fa
+   set in mdComponents). Scoped to chat bubbles (.msg-md) and the file-preview
+   markdown viewer (.md-doc) so it never touches other prose. */
+.msg-md pre,
+.md-doc pre {
+  background: #f0f4fa !important;
+  color: var(--t1) !important;
+}
+.msg-md pre code,
+.md-doc pre code {
+  background: transparent !important;
+  color: var(--t1) !important;
+}
+
+/* 宽内容(长公式、无法折行的 URL/token)不得撑破问题列表/聊天气泡宽度。容器兜底横向滚动。
+   注:单行 $$…$$ 会被 remark-math 当作「行内」katex(不可折行的 inline-block),只能靠容器滚动;
+   多行 $$ 块才是 .katex-display。这里两种都覆盖。无固定高度 → overflow-x:auto 不会引入纵向滚动条。
+   前提:承载它的 flex 子项须带 min-width:0,否则 flex 项按内容固有宽撑开、容器 overflow 永不触发。 */
+.msg-md {
+  min-width: 0;
+  overflow-x: auto;
+}
+/* 块级公式($$ 独占多行)自身横向滚动更细腻:只滚公式、不滚整段(纵向不裁剪,否则上下标被切)。 */
+.msg-md .katex-display,
+.md-doc .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px; /* 给滚动条留位,避免遮住公式底部 */
+}

@@ -1,0 +1,18 @@
+{
+  "name": "drawing-engine",
+  "private": true,
+  "version": "0.0.1",
+  "description": "网络拓扑 Agent 设计方案 —— 快速验证 spike，独立目录，不进 Electron/frontend-desktop",
+  "scripts": {
+    "verify": "node verify.js && node verify-drc.js && node verify-geometry.mjs && node verify-regions.js && node verify-render.js && node verify-geometry-report.js && node verify-draw-core.js && node verify-style-report.js && node verify-cli.js && node verify-icons.js && node verify-icon-reference.js && node verify-svg-geometry.js && node verify-vsdx.js && node verify-pptx.js && node verify-serve.js",
+    "serve": "node serve.js 5177"
+  },
+  "dependencies": {
+    "elkjs": "^0.11.1",
+    "@mr_mint/elkjs-libavoid": "^0.5.0"
+  },
+  "//dependencies": {
+    "elkjs": "当前没有任何源文件 import 它——节点坐标全部来自 regions.js，elk 的 layered 算法早已不跑。保留是因为它是 @mr_mint/elkjs-libavoid 的 peerDependency，且扩展到流程图/依赖图/组织架构图时，ELK 的 layered/mrtree/radial 正是要用的东西（见 docs/superpowers/specs/2026-07-28-topology-skill-and-tool-boundary-design.md）。删掉能省 7.7MB，但第二个用例来时还得装回来。",
+    "@mr_mint/elkjs-libavoid": "正交避障走线（WASM）。libavoid 在 Python 侧没有任何可用绑定，这是整套方案必须带 Node 运行时的唯一原因。"
+  }
+}

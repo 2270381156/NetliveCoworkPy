@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "drawing-engine-static",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["serve.js", "5177"],
+      "port": 5177
+    }
+  ]
+}

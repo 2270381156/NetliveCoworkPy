@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "browser-mcp": {
+      "command": "${APP_NODE}",
+      "args": [
+        "${APP_BROWSER_MCP}/dist/index.js"
+      ],
+      "env": {},
+      "default_purposes": [
+        "act"
+      ],
+      "capability_purpose_override": {},
+      "timeout_per_call_sec": 120,
+      "connect_timeout_sec": 15
+    }
+  }
+}

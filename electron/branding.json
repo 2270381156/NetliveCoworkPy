@@ -1,0 +1,15 @@
+{
+  "_comment": "品牌标识唯一来源。衍生新品牌只改这个文件——构建期由 packaging/build_electron.ps1 注入 electron/package.json，运行期由 electron/main.js 与前端（vite 的 @branding 别名）直接读。切勿把这些值再硬编码回别处。",
+  "appId": "com.netlive-cowork.desktop",
+  "productName": "NetLIVE Cowork",
+  "_dirComment": "appDataDir 与 npmName 各自决定一个 AppData 目录，衍生品牌两个都要改，只改一个会有一半状态串台：appDataDir → %APPDATA%\\<值>，放业务数据（data/logs/resources/.env）；npmName → package.json 的 name，Electron 据此定 userData=%APPDATA%\\<值>，放 Chromium 的 Cache/Local Storage/Cookies。npmName 还决定 NSIS 卸载程序文件名与 webview UA 里的应用标识。",
+  "appDataDir": "NetLIVECowork",
+  "legacyAppDataDir": "IPMaster-Cowork",
+  "_backendPortComment": "本地后端监听的端口。**派生品牌必须给一个不同的值** —— 两个品牌若共用同一端口，先启动的那个会被后启动的当成「自己的后端」而复用，后者随即放弃启动自己的后端，并把界面从对方那里加载（后端把前端 dist 挂在 /），结果是前端、后端、数据整条都串到对方那边。运行期 electron/main.js 以此为默认值；NLC_BACKEND_PORT 环境变量优先级更高。⚠ 本端口必须避开上一代 IPMaster-Cowork 的 15926：旧版改不了了，它的探测只看 HTTP 200、不比对 appId，一旦我们占上 15926，后启动的旧版就会反过来复用我们的后端。",
+  "backendPort": 17926,
+  "backendName": "netlive-cowork",
+  "npmName": "netlive-cowork",
+  "_supportGroupComment": "FAQ 里的用户交流群。两项都置空则 FAQ 不出现「或在…交流群反馈」这句——衍生品牌若没有自己的群，务必置空，别留上一代的群号。",
+  "supportGroupName": "IPMaster Mythos",
+  "supportGroupId": "939685594949301314"
+}

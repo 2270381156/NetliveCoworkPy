@@ -1,0 +1,120 @@
+/* PPTX viewer styles. The renderer is a verbatim port of NID's; NID's <style>
+ * block contained global helper classes (.slide-inner, .shape-text, .slide-table,
+ * .autofit-inner) that _buildShapeParts references but does NOT emit itself.
+ * They must live here for the port to render correctly. All rules are scoped
+ * under .ipm-pptx-root.
+ *
+ * NID's shape CSS uses var(--pt, 1pt) for all pt-derived sizes; the actual
+ * --pt value is emitted per-slide by slideToHtml (computed from slide.width)
+ * so font / padding / border / line-height scale with the slide card width
+ * via container queries (cqi units).
+ */
+
+.ipm-pptx-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg2);
+  --pptx-zoom: 1;
+  /* Scroll-snap makes wheel / trackpad scrolling settle on whole slides
+   * rather than mid-page, matching PowerPoint reading view. */
+  scroll-snap-type: y mandatory;
+}
+
+/* Page wrapper. Each one fills exactly one viewport-height of the scroll
+ * container, with the slide centred inside. This is what makes paging clean:
+ * scroll-snap-align: start on this wrapper means the next wrapper starts
+ * exactly one viewport below, with no leftover sliver of the previous slide. */
+.ipm-pptx-slide-page {
+  min-height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  padding: 16px 24px;
+  box-sizing: border-box;
+}
+
+.ipm-pptx-slide {
+  /* Fit-page: the slide takes the smaller of two constraints —
+   *   - horizontal: container width minus side breathing room
+   *   - vertical:   container height multiplied by the slide aspect
+   *                 (width = height × aspect)
+   * Multiplied by --pptx-zoom for user zoom. The page wrapper above gives
+   * the breathing space, so we subtract only what we need for the slide's
+   * own padding/border, not the inter-page gap.
+   *
+   * The outer `max(200px, ...)` is a defensive floor: if the ResizeObserver
+   * hasn't reported a size yet (--pptx-container-* still 0px), the inner
+   * calc evaluates to a negative number and the slide would render as a
+   * blank zero-width box. Falling back to 200px keeps something visible
+   * for the brief render in between. */
+  width: max(200px, calc(
+    min(
+      var(--pptx-container-w, 100vw) - 48px,
+      (var(--pptx-container-h, 100vh) - 32px) * var(--slide-aspect, 1.778)
+    ) * var(--pptx-zoom, 1)
+  ));
+  aspect-ratio: var(--slide-aspect, 1.778);
+  background: white;
+  border: 1px solid var(--t3);
+  box-shadow: 0 6px 20px rgba(15, 31, 61, 0.18);
+  position: relative;
+  container-type: inline-size;
+  overflow: hidden;
+}
+
+/* NID's _buildShapeParts emits shape <div>s with absolute positioning relative
+ * to the slide-inner box (NID uses <div class="slide-inner"> as the absolute
+ * container). Match that structure. */
+.ipm-pptx-root .slide-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* NID's <style> block defines .shape-text — the default text box styling that
+ * _buildShapeParts references via `class="shape-text ${cls}"`. */
+.ipm-pptx-root .shape-text {
+  padding: calc(3.6 * var(--pt, 1pt)) calc(7.2 * var(--pt, 1pt));
+  line-height: normal;
+  word-wrap: break-word;
+  font-size: calc(14 * var(--pt, 1pt));
+}
+/* NOTE: do NOT add a `.shape-text p { margin: 0 }` reset here. Its specificity
+ * (0,2,1 — two classes + element) beats the per-paragraph `.sh-X-pN` rules
+ * (0,2,0) that shapeBuilder emits, which would clobber paragraph space-before/
+ * after (spcBef/spcAft) and collapse intentionally-spaced paragraphs (e.g.
+ * a CONTENTS list with 20pt gaps between items). Every emitted <p> already
+ * carries an explicit margin from its .sh-X-pN class, so no reset is needed. */
+.ipm-pptx-root .autofit-inner { transform-origin: top left; }
+
+/* NID's <style> block defines .slide-table — used by table shapes via
+ * `class="slide-table"`. */
+.ipm-pptx-root .slide-table {
+  border-collapse: collapse;
+  width: 100%;
+  height: 100%;
+  font-size: calc(8 * var(--pt, 1pt));
+}
+.ipm-pptx-root .slide-table th,
+.ipm-pptx-root .slide-table td {
+  /* #ccc is only a FALLBACK — cells that define their own borders (lnL/lnR/
+   * lnT/lnB) emit higher-specificity per-cell border rules that override this. */
+  border: calc(0.75 * var(--pt, 1pt)) solid #ccc;
+  /* Tight vertical metrics: PPT row heights are authoritative and assume
+   * compact cell text (cell marT≈0.75pt, marB=0, ~1.0 line spacing). Our
+   * previous 1.5pt vertical padding + 1.15 line-height made each cell ~17%
+   * taller than its allocated row, so multi-row tables overflowed their
+   * fixed-height container and a stacked second table got overlapped.
+   * Matching PPT's compact metrics keeps content within the row height. */
+  padding: calc(0.4 * var(--pt, 1pt)) calc(2.5 * var(--pt, 1pt));
+  line-height: 1.0;
+  vertical-align: middle;
+}
+.ipm-pptx-root .slide-table th { font-weight: 600; }

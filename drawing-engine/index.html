@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>拓扑 Spike · 双核心架构图</title>
+<!-- 2026-07-25 起：布局和绘制全部在 Node 侧完成（serve.js /api/svg → draw-core.js），
+     这个页面只做三件事——切 routing、把返回的 SVG 字符串塞进 #stage、平移缩放。
+     页面里曾经有一份跟 draw-core.js 平行的绘制代码（drawZones/drawEdges/drawNodes/…），
+     两份各自演化悄悄跑偏是本项目反复踩的坑，已整份删除，不要再加回来。 -->
+<style>
+  /* 只剩页面外壳样式。.devlabel/.devrole 现在随 SVG 走（draw-core.js 的 SVG_STYLE），
+     不能在这里再写一份——那会成为标签样式的第三个来源。 */
+  :root { --bg:#f7f8fa; --panel:#ffffff; --ink:#2b3542; --muted:#6b7787; --line:#dbe1e8; }
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; font-family: "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; color:var(--ink); background:var(--bg); }
+  #app { position:fixed; inset:0; display:flex; flex-direction:column; }
+  #bar { display:flex; align-items:center; gap:14px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:13px; }
+  #bar b { font-weight:600; }
+  #bar .sp { flex:1; }
+  #bar button { font:inherit; padding:4px 12px; border:1px solid var(--line); border-radius:6px; background:#fff; cursor:pointer; }
+  #bar button:hover { background:#f0f3f7; }
+  #bar .hint { color:var(--muted); }
+  #routingSwitch { display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  #routingSwitch button { border:none; border-radius:0; }
+  #routingSwitch button + button { border-left:1px solid var(--line); }
+  #routingSwitch button.active { background:#2b3542; color:#fff; }
+  #loading { color:var(--muted); }
+  #stage { position:relative; flex:1; overflow:hidden; }
+  #stage svg { width:100%; height:100%; display:block; cursor:grab; background:
+        radial-gradient(circle at 1px 1px, #e6eaef 1px, transparent 0) 0 0/22px 22px; }
+  #stage svg.drag { cursor:grabbing; }
+</style>
+
+<div id="app">
+  <div id="bar">
+    <b>拓扑 Spike</b><span id="title" class="hint"></span>
+    <div id="routingSwitch">
+      <button id="rtDirect" data-routing="direct">档 A · 直线走线</button>
+      <button id="rtOrtho" data-routing="orthogonal">档 B · 正交走线</button>
+    </div>
+    <span id="loading"></span>
+    <span class="sp"></span>
+    <span class="hint">滚轮缩放 · 拖拽平移 · 线宽随缩放恒定</span>
+    <button id="fit">适应窗口</button>
+    <span id="zoom" class="hint"></span>
+  </div>
+  <div id="stage"></div>
+</div>
+
+<!-- 只为标题：模型内容本身不参与渲染（渲染用的模型在 server 侧，见 serve.js）。 -->
+<script src="topo-data.js"></script>
+<script>
+(function () {
+  const stage = document.getElementById("stage");
+  const model = window.TOPO || {};
+  document.getElementById("title").textContent = "· " + ((model.meta && model.meta.name) || "网络拓扑图");
+
+  // ---------- viewBox = 相机（平移/缩放），跟 SVG 内容解耦，换 routing 后可重复 fit ----------
+  // svg 元素每次注入都是新的，所以相机状态放在闭包里、每次 mount 后重新挂事件。
+  let svg = null;
+  let vb = { x: 0, y: 0, w: 100, h: 100 }, home = Object.assign({}, vb);
+  const applyVB = () => {
+    if (!svg) return;
+    svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    const sc = Math.min(svg.clientWidth/vb.w, svg.clientHeight/vb.h);
+    document.getElementById("zoom").textContent = "缩放 " + Math.round(sc*100) + "%";
+  };
+  const clientToWorld = (cx, cy) => { const p = svg.createSVGPoint(); p.x=cx; p.y=cy; return p.matrixTransform(svg.getScreenCTM().inverse()); };
+
+  function bindViewport() {
+    svg.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const w = clientToWorld(e.clientX, e.clientY);
+      const k = e.deltaY < 0 ? 0.9 : 1.111;
+      vb.x = w.x - (w.x - vb.x)*k; vb.y = w.y - (w.y - vb.y)*k; vb.w *= k; vb.h *= k;
+      applyVB();
+    }, { passive:false });
+
+    let dragging=false, lx=0, ly=0;
+    svg.addEventListener("pointerdown", (e)=>{ dragging=true; lx=e.clientX; ly=e.clientY; svg.classList.add("drag"); svg.setPointerCapture(e.pointerId); });
+    svg.addEventListener("pointermove", (e)=>{
+      if(!dragging) return;
+      const sc = Math.min(svg.clientWidth/vb.w, svg.clientHeight/vb.h), wpp = 1/sc;
+      vb.x -= (e.clientX-lx)*wpp; vb.y -= (e.clientY-ly)*wpp; lx=e.clientX; ly=e.clientY; applyVB();
+    });
+    const stop = ()=>{ dragging=false; svg.classList.remove("drag"); };
+    svg.addEventListener("pointerup", stop); svg.addEventListener("pointercancel", stop);
+  }
+
+  document.getElementById("fit").addEventListener("click", ()=>{ vb=Object.assign({},home); applyVB(); });
+  window.addEventListener("resize", applyVB);
+
+  // ---------- 注入：整段 SVG 由 server 拼好，这里只补 id、去掉固定尺寸交给 CSS 撑满 #stage ----------
+  // 跟 render.js 的 renderStandaloneHTML() 做的是同一件事（同一串字节、同样两条 replace）。
+  function mount(svgText, viewBox) {
+    stage.innerHTML = svgText
+      .replace(/^<svg /, '<svg id="svg" ')
+      .replace(/ width="\d+" height="\d+"/, "");
+    svg = document.getElementById("svg");
+    bindViewport();
+    home = { x: viewBox.x, y: viewBox.y, w: viewBox.w, h: viewBox.h };
+    vb = Object.assign({}, home);
+    applyVB();
+  }
+
+  // ---------- routing 切换：走 /api/svg，浏览器不做任何布局/绘制 ----------
+  async function loadSVG(routing) {
+    const res = await fetch(`/api/svg?routing=${routing}`);
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || ("HTTP " + res.status));
+    return data;
+  }
+  async function switchRouting(routing) {
+    document.getElementById("rtDirect").classList.toggle("active", routing === "direct");
+    document.getElementById("rtOrtho").classList.toggle("active", routing === "orthogonal");
+    const loading = document.getElementById("loading");
+    loading.textContent = routing === "orthogonal" ? "elkjs+libavoid 计算中…" : "计算中…";
+    try {
+      const data = await loadSVG(routing);
+      mount(data.svg, data.viewBox);
+      loading.textContent = "";
+    } catch (err) {
+      loading.textContent = "加载失败：" + err.message;
+      console.error(err);
+    }
+  }
+  document.getElementById("rtDirect").addEventListener("click", () => switchRouting("direct"));
+  document.getElementById("rtOrtho").addEventListener("click", () => switchRouting("orthogonal"));
+
+  switchRouting("orthogonal");
+})();
+</script>
