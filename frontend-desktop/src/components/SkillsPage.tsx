@@ -455,10 +455,11 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
     !q || name.toLowerCase().includes(q) || (desc || '').toLowerCase().includes(q)
   // 卡片副标题里的「来路」。**"市场"两个字只在这儿出现**——页签是按"归谁"命名的（本地 /
   // 通用 / MBB Cowork），归属标签也是；只有这一处真的在说"从哪个市场来的"。
+  // 通用页签留空 —— 见 tileFromCatalog 里 from 那行的说明。
   const marketName = cowork
     ? t('skills.marketOfCowork').replace('{name}',
         markets.find(m => m.cowork === cowork)?.display_name ?? cowork)
-    : t('skills.marketCommonShort')
+    : ''
 
   /** 当前技能 —— 两个子簇，按**它是怎么来的**分：本机的文件 / 市场里引的。
    *
@@ -527,7 +528,17 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
   const nothingAtAll = usable.length === 0 && addable.length === 0 && catalog.length === 0
 
   // 点开的那一条。市场项与本地项都能点开，详情层按 kind 决定给哪些操作。
-  const [opened, setOpened] = useState<TileItem | null>(null)
+  // 点开的那一条。**只存 key，条目每次从活列表里现取。**
+  //
+  // 原先直接把整个 TileItem 存进 useState —— 那是一份快照。改完归属之后列表重新拉了，
+  // 弹窗里那份还停在改动之前：勾选框纹丝不动，而后端其实已经写进去了。用户看到的是
+  // 「勾不上，但它默默跑到那个 agent 下面去了」。「本地」页签一直是按 id 现取的,
+  // 所以那边从来没有这个毛病。
+  const [openedKey, setOpenedKey] = useState<string | null>(null)
+  const opened = useMemo(
+    () => [...usable, ...addable].find(i => i.key === openedKey) ?? null,
+    [usable, addable, openedKey],
+  )
   // 添加**必须**在目录里找到条目：要把 source 和名字传给后端去下载。取消则不用（见上）。
   const byKey = (k: string) => catalog.find(i => keyOf(i) === k)
   const addByKey = (k: string) => { const it = byKey(k); if (it) pullMut.mutate(it) }
@@ -574,9 +585,9 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
           <SkillSection title={t('skills.groupUsable')} count={usable.length}>
             <div className="flex flex-col gap-4">
               <PagedTiles items={usableLocal} page={pgLocal} onPage={setPgLocal}
-                label={t('skills.clusterLocal')} onOpen={setOpened} />
+                label={t('skills.clusterLocal')} onOpen={it => setOpenedKey(it.key)} />
               <PagedTiles items={usableRefs} page={pgRefs} onPage={setPgRefs}
-                label={t('skills.clusterReferenced')} onOpen={setOpened} />
+                label={t('skills.clusterReferenced')} onOpen={it => setOpenedKey(it.key)} />
             </div>
           </SkillSection>
 
@@ -591,7 +602,7 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
                   <TileGrid gridRef={addGrid.ref}>
                     {pg.slice.map(it => (
                       <SkillTile key={it.key} item={it}
-                        onOpen={() => setOpened(it)}
+                        onOpen={() => setOpenedKey(it.key)}
                         onAdd={() => addByKey(it.key)}
                         adding={pullMut.isPending && keyOf(pullMut.variables) === it.key}
                         error={pullError?.key === it.key ? pullError.msg : undefined} />
@@ -608,11 +619,11 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
       {opened && (
         <SkillDetailDialog
           item={opened}
-          onClose={() => setOpened(null)}
-          onAdd={opened.kind === 'market' ? () => { addByKey(opened.key); setOpened(null) } : undefined}
+          onClose={() => setOpenedKey(null)}
+          onAdd={opened.kind === 'market' ? () => { addByKey(opened.key); setOpenedKey(null) } : undefined}
           adding={pullMut.isPending}
           onUnreference={opened.kind === 'referenced'
-            ? () => { unpullMut.mutate(opened.key); setOpened(null) }
+            ? () => { unpullMut.mutate(opened.key); setOpenedKey(null) }
             : undefined}
           unreferencing={unpullMut.isPending}
           onCoworksChange={opened.kind === 'market'
@@ -701,7 +712,9 @@ function tileFromCatalog(item: RemoteCatalogItem, marketName: string, pulled: bo
     // 只有**已引用**的才标来路：它们会和本地导入的、别的市场引来的混在「已安装」里，不标
     // 就分不清。未引用的那批全都躺在自己市场的页签下，页签已经说了是哪个市场，再标一遍
     // 是每张卡片重复一次同样的信息。
-    from: pulled ? marketName : undefined,
+    // 只有**已引用**的才标来路，而且**只在 cowork 页签标**：通用页签里标"通用市场"
+    // 等于把页签名字在每张卡片上再写一遍——页签已经说了这是通用，卡片再说一次是噪声。
+    from: pulled && marketName ? marketName : undefined,
     author: item.updater || undefined,
     createdAt: item.create_time || undefined,
     // `?? undefined` 而不是 `|| undefined`：0 是有效值（有数据、确实没人下过），要显示出来。

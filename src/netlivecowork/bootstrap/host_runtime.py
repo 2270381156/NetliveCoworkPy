@@ -334,6 +334,16 @@ def _register_mcp(runtime):
     manager = MCPProviderManager(MCPServerStore(), runtime.providers, wrap=_cowork_mcp_wrapper())
     manager.load_from_store()
     deps.set_mcp_manager(manager)
+
+    # 套件自带的 MCP（清单 mcp.define）——**必须在这里，不能放进 _setup_cowork()**。
+    # 那个函数跑在整条装配的最前面（runtime 都还没建完），管理器还不存在，
+    # 一调就是 RuntimeError: MCPProviderManager not initialized，被 catch 吞成一行 warning。
+    # 于是启动那遍从来没注册成功过，只有 recheck 那条路能补上；而 recheck 在
+    # "没下载、没收回"时直接 return —— 结果就是所有 agent 只剩 browser-mcp。
+    try:
+        _register_suite_mcp_servers()
+    except Exception:
+        logger.warning("cowork：套件自带 MCP 注册失败，本次只有随包那些", exc_info=True)
     return manager
 
 
@@ -441,14 +451,6 @@ def _setup_cowork() -> None:
 
     # 套件自带的 MCP 定义（清单 mcp.define）。
     #
-    # ⚠ **这一步以前不存在** —— `mcp_define` 解析了却没人用，于是套件声明的 server
-    # 全靠应用随包发。表现是：套件里写着 use + define，agent 却说自己没有这个工具，
-    # 而清单看上去一切正常。随包那份一旦不发了（或被清理掉），所有 cowork 一起失去它。
-    try:
-        _register_suite_mcp_servers()
-    except Exception:
-        logger.warning("cowork：套件自带 MCP 注册失败，本次只有随包那些", exc_info=True)
-
     # cowork 自带的技能市场。**只在这一处接** —— 市场层自己不认识 cowork（架构设计 §7）：
     # 那几个地址写在套件里（cowork.json 的 skills.*），属于权限，不属于部署配置。
     try:
