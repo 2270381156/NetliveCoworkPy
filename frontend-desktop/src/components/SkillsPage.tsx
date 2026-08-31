@@ -210,12 +210,15 @@ function LocalPanel() {
     },
   })
 
+  const agents = useAgents()   // 只用来算归属默认值（见 defaultCoworks）
   // 选完文件先攒着，弹框里问归属，确认了才真导。
   //
   // **归属必须问在导入动作里面**：它是"这个 skill 属于谁"的从属关系。放在列表上方当一个
   // 常驻控件，第一反应会被读成"按 agent 筛选列表"——位置决定了人怎么理解它，说明文字改不动
   // 这个第一反应。
   const [pendingFile, setPendingFile] = useState<File | null>(null)
+  // 只有一个 cowork 时默认就给它 —— 见 defaultCoworks。阵容是异步到达的，
+  // 所以在打开导入弹窗那一刻再算，不能在这里定死。
   const [pendingCoworks, setPendingCoworks] = useState<SkillCoworks>([ALL_COWORKS])
 
   // 改归属：导入后反悔、或从市场引来之后想收窄。同步会把它带到云端，两边可见范围保持一致。
@@ -242,7 +245,9 @@ function LocalPanel() {
     const file = e.target.files?.[0]
     if (file) {
       setPendingFile(file)
-      setPendingCoworks([ALL_COWORKS])   // 每次都回到默认，不继承上一次的选择
+      // 每次都回到默认，不继承上一次的选择。只有一个 cowork 时默认就是它 ——
+      // 那时"给谁用"只有一个答案，默认成"通用"反而多一层没意义的概念。
+      setPendingCoworks(defaultCoworks(agents))
     }
     e.target.value = ''
   }
@@ -507,7 +512,9 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
     for (const item of filtered) {
       if (!item.is_pulled) continue
       if (out.some(x => x.key === keyOf(item))) continue
-      out.push(tileFromCatalog(item, marketName, true))
+      // 归属只有本地那份记录知道，目录里没有——按 key 去 mine 里取。
+      const local = mine.find(sk => sk.skill_id === keyOf(item))
+      out.push(tileFromCatalog(item, marketName, true, local?.coworks))
     }
     return out
   }, [mine, filtered, catalog, cowork, q, marketName])
@@ -535,13 +542,48 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
   // 「勾不上，但它默默跑到那个 agent 下面去了」。「本地」页签一直是按 id 现取的,
   // 所以那边从来没有这个毛病。
   const [openedKey, setOpenedKey] = useState<string | null>(null)
+  // ⚠ **从未过滤的源里取**，不能用 usable/addable —— 那两个是按当前页签筛过的。
+  //
+  // 在通用页签把一条 skill 勾给某个 cowork：保存 → 列表刷新 → 这条不再满足
+  // "通用页签只看通用的"这个条件 → 它从 usable 里消失 → opened 变 null →
+  // 勾选框弹回去。用户看到的是"勾不上，可它确实跑到那个 agent 页签里去了"。
+  //
+  // 归属是这条 skill 的固有属性，跟"我此刻站在哪个页签"无关；弹窗要一直看得见它。
+  const openedPool = useMemo(
+    () => [
+      ...mine.map(sk => tileFromLocal(sk, t, { showFrom: false })),
+      ...catalog.map(i => tileFromCatalog(i, marketName, i.is_pulled)),
+    ],
+    [mine, catalog, marketName, t],
+  )
   const opened = useMemo(
-    () => [...usable, ...addable].find(i => i.key === openedKey) ?? null,
-    [usable, addable, openedKey],
+    () => openedPool.find(i => i.key === openedKey) ?? null,
+    [openedPool, openedKey],
   )
   // 添加**必须**在目录里找到条目：要把 source 和名字传给后端去下载。取消则不用（见上）。
   const byKey = (k: string) => catalog.find(i => keyOf(i) === k)
-  const addByKey = (k: string) => { const it = byKey(k); if (it) pullMut.mutate(it) }
+  const agents = useAgents()
+  // 引用之前先定归属。
+  //
+  // 原先归属**固定跟着页签走**（通用页签 → 通用，cowork 页签 → 那个 cowork），
+  // 用户在通用页签里想引给某一个 agent 是做不到的。
+  //
+  // ⚠ **只有一个 cowork 时不问** —— 那时"选给谁"只有一个答案，弹一个只有一项的
+  // 选择框纯属添堵。这条同样适用于本地导入那边（见 defaultCoworks）。
+  const [pendingPull, setPendingPull] = useState<RemoteCatalogItem | null>(null)
+  const [pullCoworks, setPullCoworks] = useState<SkillCoworks>([ALL_COWORKS])
+
+  const addByKey = (k: string) => {
+    const it = byKey(k)
+    if (!it) return
+    if (agents.length <= 1 || cowork) {
+      // 只有一个 cowork，或本来就站在某个 cowork 的页签里 —— 答案唯一，直接拉。
+      pullMut.mutate(it)
+      return
+    }
+    setPullCoworks(defaultCoworks(agents))
+    setPendingPull(it)
+  }
 
   return (
     <div className="p-5">
@@ -613,6 +655,43 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
               )
             })()}
           </SkillSection>
+        </div>
+      )}
+
+      {pendingPull && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(15,31,61,.4)', backdropFilter: 'blur(4px)' }}>
+          <div className="w-96 p-5" style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 80px rgba(15,31,61,.2)' }}>
+            <div className="flex items-center gap-2 mb-1">
+              <PackageIcon size={15} style={{ color: 'var(--blue)' }} />
+              <p className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>{t('skills.importOwnerLabel')}</p>
+            </div>
+            <p className="mt-2 text-xs truncate" style={{ color: 'var(--t2)' }}>{pendingPull.name}</p>
+            <p className="mb-2 mt-4 text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>{t('skills.ownerHint')}</p>
+            <div className="max-h-56 overflow-y-auto rounded-xl p-1" style={{ border: '1px solid var(--border)' }}>
+              <CoworkChooser value={pullCoworks} onChange={setPullCoworks} disabled={pullMut.isPending} />
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" size="sm" disabled={pullMut.isPending}
+                onClick={() => setPendingPull(null)}>{t('common.cancel')}</Button>
+              <Button size="sm" loading={pullMut.isPending}
+                onClick={() => {
+                  const it = pendingPull
+                  const labels = pullCoworks
+                  setPendingPull(null)
+                  // pull 接口只接受单个 cowork（归属跟页签走那套留下的形状），
+                  // 所以先按"通用"拉下来，再把用户选的归属补一刀写上去。
+                  pullMut.mutate(it, {
+                    onSuccess: () => {
+                      if (!isCommonSkill(labels)) {
+                        ownerMut.mutate({ key: keyOf(it), coworks: labels })
+                      }
+                    },
+                  })
+                }}>
+                {t('skills.importConfirm')}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -703,9 +782,14 @@ function keyOf(item?: RemoteCatalogItem): string {
   return item ? `${item.source}:${item.id}` : ''
 }
 
-function tileFromCatalog(item: RemoteCatalogItem, marketName: string, pulled: boolean): TileItem {
+function tileFromCatalog(
+  item: RemoteCatalogItem, marketName: string, pulled: boolean, coworks?: SkillCoworks,
+): TileItem {
   return {
     key: keyOf(item),
+    // 已引用的要带归属：不带的话卡片和详情里那一栏是空的，
+    // 而这条 skill 明明归属着某个 cowork——用户会以为归属没保存上。
+    coworks: pulled ? coworks : undefined,
     name: item.name,
     description: item.description || '',
     kind: pulled ? 'referenced' : 'market',
@@ -720,6 +804,21 @@ function tileFromCatalog(item: RemoteCatalogItem, marketName: string, pulled: bo
     // `?? undefined` 而不是 `|| undefined`：0 是有效值（有数据、确实没人下过），要显示出来。
     downloads: item.download_count ?? undefined,
   }
+}
+
+/**
+ * 归属选择的**默认值**（不是唯一值）。
+ *
+ * 只有一个 cowork 时默认给它 —— 那时「这条 skill 给谁用」只有一个答案，默认成「通用」
+ * 反而多一层没意义的概念（通用 = 所有 cowork，而所有 = 这一个）。
+ *
+ * ⚠ **它只改默认值，不该被用来隐藏选项。** 本地导入时归属还决定**上传到哪个市场**
+ * （publish 按归属路由），所以哪怕只有一个 agent，「通用」和「那个 agent」仍是两个
+ * 不同的去处，两项都要列出来。真正可以省掉选择的只有「从市场引用」那一步——那里归属
+ * 就是「给谁用」，没有第二层含义。
+ */
+export function defaultCoworks(agents: readonly { id: string }[]): SkillCoworks {
+  return agents.length === 1 ? [agents[0].id] : [ALL_COWORKS]
 }
 
 function tileFromLocal(
