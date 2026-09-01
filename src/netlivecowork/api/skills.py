@@ -133,7 +133,13 @@ def publish_local_skill(
     cowork=Depends(deps.get_cowork_skill_service),
 ) -> PullSkillResponse:
     """把一个本地 skill 直接发布到 cowork 市场（本地 skill 卡片上的"上传"按钮）。
-    云端引用的 skill（id 含冒号）本地无内容，不能发布。auth token 透传给 cowork 写 creator。"""
+    云端引用的 skill（id 含冒号）本地无内容，不能发布。auth token 透传给 cowork 写 creator。
+
+    ⚠ **上传目标暂时固定为通用的 cowork 市场**，不看 skill 归属：各 cowork **自己的**
+    skill 市场目前都没开放"上传"接口，能收上传的只有通用市场。归属选择框仍然有用
+    （它决定"谁能用"），只是上传去向暂时与它无关。
+    等各 cowork 市场开放上传后，这里应改成**按 skill 归属选市场**（归属某 cowork →
+    发到那个 cowork 自己的市场；通用 → 通用市场）——那是这段将来要长出来的地方。"""
     if ":" in skill_id:
         raise HTTPException(
             status_code=400,

@@ -32,6 +32,12 @@ class CoworkResponse(BaseModel):
     #: 给的是**地址不是图片本体**：`/coworks` 每次列阵容都会被调，把几十 KB 的 base64
     #: 塞进来，每次都要传一遍、解析一遍。图片交给浏览器按 URL 缓存更合适。
     logo_url: str | None = None
+    #: 这个 cowork 有没有**自己的** skill 市场（套件里配了 skill_market_url 或 skill_mythos_url）。
+    #:
+    #: 界面用它判断"上传/引用要不要问归属"：只有一个 cowork、且它连自己的市场都没有时，
+    #: "上传到哪个市场"只有通用一个答案，那几个选择框就该消失 —— 别让用户在只有一个
+    #: 答案的问题上点来点去。**只回布尔不回地址**：地址是套件内部的事，界面不该知道。
+    has_own_market: bool = False
 
 
 @router.get("/coworks", response_model=list[CoworkResponse])
@@ -57,6 +63,8 @@ def list_coworks() -> list[CoworkResponse]:
                 accent=c.accent,
                 order=c.order,
                 logo_url=(f"/api/v1/coworks/{c.id}/logo" if _logo_path(root, c) else None),
+                # 两种市场任意一种非空就算"有自己的市场"。它们是两种接口、不是主次之分。
+                has_own_market=bool(c.skill_market_url or c.skill_mythos_url),
             )
             for c in installed.list_all(root)
         ]
