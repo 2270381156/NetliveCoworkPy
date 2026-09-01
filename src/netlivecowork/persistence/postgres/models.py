@@ -29,6 +29,8 @@ class SessionModel(Base):
     tenant_id: Mapped[str] = mapped_column(String(64), default="default", index=True)
     user_prompt: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default="RUNNING", index=True)
+    # 用户手动标题；与事件投影持续更新的 goal 分离，避免后续 AI 识别覆盖用户命名。
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
     goal: Mapped[str] = mapped_column(Text, default="")
     root_agent_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     llm_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)

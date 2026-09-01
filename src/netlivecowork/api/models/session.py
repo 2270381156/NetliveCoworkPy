@@ -104,6 +104,8 @@ class SessionEntry:
 
         self.status: str = "RUNNING"
         self.goal: str = user_prompt[:200]
+        # 用户手动标题与 AI 维护的 goal 分离：一旦设置，展示层永久优先使用它。
+        self.title: str = ""
         self.root_agent_id: str | None = None
 
         self.token_budget: int = 200_000
@@ -192,6 +194,7 @@ class SessionEntry:
         return {
             "id": self.session_id,
             "user_prompt": self.user_prompt,
+            "title": self.title,
             "goal": self.goal,
             "status": self.status,
             "template_id": self.template_id,
@@ -1192,6 +1195,8 @@ def _entry_from_record(rec) -> SessionEntry:
         llm_account=rec.llm_provider,
     )
     entry.status = rec.status
+    # 兼容测试桩与旧的外部读模型：尚未带 title 属性时等同“从未手动命名”。
+    entry.title = getattr(rec, "title", "") or ""
     entry.goal = rec.goal or ""
     entry.root_agent_id = rec.root_agent_id
     entry.token_budget = rec.token_budget

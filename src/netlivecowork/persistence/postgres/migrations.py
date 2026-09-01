@@ -15,7 +15,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import insert, select, text, update
+from sqlalchemy import inspect, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 
@@ -684,6 +684,17 @@ async def _m011_repair_observer_notice_reason(db: AsyncSession) -> int:
     return changed
 
 
+async def _m012_add_session_title(db: AsyncSession) -> int:
+    """给存量 sessions 投影补用户手动标题列；新库已有该列时 no-op。"""
+    conn = await db.connection()
+    columns = await conn.run_sync(
+        lambda sync_conn: {c["name"] for c in inspect(sync_conn).get_columns("sessions")}
+    )
+    if "title" not in columns:
+        await db.execute(text("ALTER TABLE sessions ADD COLUMN title TEXT NULL"))
+    return 0
+
+
 # 有序注册表：(migration_id, coro)。追加即可，勿改既有 id / 顺序。
 # 注：m007/m008 曾登记后撤销（workspace 重登记,见 6050e9c）,id 已烧掉、永不复用。
 MIGRATIONS: list[tuple[str, object]] = [
@@ -696,6 +707,7 @@ MIGRATIONS: list[tuple[str, object]] = [
     ("m009_backfill_task_metadata", _m009_backfill_task_metadata),
     ("m010_canonical_template_id_prefix", _m010_canonical_template_id_prefix),
     ("m011_repair_observer_notice_reason", _m011_repair_observer_notice_reason),
+    ("m012_add_session_title", _m012_add_session_title),
 ]
 
 
