@@ -131,19 +131,50 @@ def test_without_a_wrapper_the_manager_registers_as_before():
     assert registered == [provider], "不给包装器就原样注册"
 
 
-def test_the_assembly_wrapper_marks_shipped_servers(tmp_path, monkeypatch):
-    """装配造出来的包装器要认得"哪些是客户端自带的"。"""
+def test_the_assembly_wrapper_only_gates_suite_defined_servers(tmp_path, monkeypatch):
+    """**只有套件 `mcp.define` 声明过的 server 才受 cowork 归属约束。**
+
+    两类一律豁免、所有会话可见:客户端自带(browser-mcp)、以及用户在 mcp.json 手工自加的
+    全局 MCP。否则用户自配的 MCP 会在每个 agent 会话里凭空消失(它不属于任何套件的 mcp.use)。
+    """
+    from netlivecowork import paths
     from netlivecowork.bootstrap.host_runtime import _cowork_mcp_wrapper
 
+    # 一个已装套件，在 mcp.define 里声明了 kb-mcp
+    coworks = tmp_path / "coworks"
+    d = coworks / "ipmaster"
+    d.mkdir(parents=True)
+    (d / "cowork.json").write_text(json.dumps({
+        "id": "ipmaster", "version": "1",
+        "mcp": {"use": ["kb-mcp"], "define": {"kb-mcp": {"url": "http://x/mcp"}}},
+    }), encoding="utf-8")
+    monkeypatch.setattr(paths, "coworks_dir", lambda: coworks)
     monkeypatch.setenv("NLC_CLIENT_SHIPPED_MCP", "browser-mcp")
+
     wrap = _cowork_mcp_wrapper()
 
-    suite_one = wrap(object(), "tech-kb")
-    shipped = wrap(object(), "browser-mcp")
+    suite_defined = wrap(object(), "kb-mcp")      # 套件声明过 → 受约束
+    user_added = wrap(object(), "my-own-mcp")     # 用户自加、无人声明 → 豁免
+    shipped = wrap(object(), "browser-mcp")       # 客户端自带 → 豁免
 
-    assert isinstance(suite_one, CoworkScopedMCPProvider)
-    assert suite_one._suite_delivered is True
+    assert isinstance(suite_defined, CoworkScopedMCPProvider)
+    assert suite_defined._suite_delivered is True
+    assert user_added._suite_delivered is False, "用户手工自加的全局 MCP 不该被当成套件下发"
     assert shipped._suite_delivered is False, "自带的不受套件声明约束"
+
+
+def test_the_wrapper_degrades_to_none_without_cowork(monkeypatch):
+    """**摘掉 cowork 子系统时包装器返回 None（架构设计 D2）。**
+
+    衍生品牌的单 agent 形态整个不带 cowork —— `netlivecowork.cowork.*` import 会 ImportError，
+    包装器要捕获后返回 None（manager 据此原样注册），而不是让 MCP 注册连带崩掉。
+    """
+    import sys
+    from netlivecowork.bootstrap.host_runtime import _cowork_mcp_wrapper
+
+    # sys.modules[name] = None → `import name` 抛 ImportError，模拟"没装 cowork 包"
+    monkeypatch.setitem(sys.modules, "netlivecowork.cowork.guards", None)
+    assert _cowork_mcp_wrapper() is None
 
 
 # ── 会话登记 ──────────────────────────────────────────────────────────────────
