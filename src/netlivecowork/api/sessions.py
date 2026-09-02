@@ -251,7 +251,11 @@ async def create_session(
     from ctx_weft import SessionStartParams
     from ctx_weft.core.utils import generate_id
 
-    logger.info("create_session: received user_info=%s, user_prompt=%s", req.user_info, req.user_prompt[:50] if req.user_prompt else "")
+    logger.info(
+        "create_session ←请求: template_id=%r session_id=%r workspace=%r mode=%r "
+        "llm=%r/%r user=%s prompt=%.40s",
+        req.template_id, req.session_id, req.workspace, req.mode,
+        req.llm_account, req.llm_model, req.user_info, req.user_prompt or "")
 
     template_id = req.template_id
     if not template_id:
@@ -293,6 +297,13 @@ async def create_session(
     # 同一处再登记一次 cowork 归属：能力属于 cowork，会话只表明身份（架构设计 §3.2）。
     # 认不出的模板（母版、历史会话）不登记——"不知道"与"知道且是它"必须分开。
     cowork_bridge.bind_session(session_id, template_id)
+    try:
+        from netlivecowork.cowork.runtime import get_scope
+        _sc = get_scope()
+        _cw = _sc.cowork_id_of(session_id) if _sc is not None else "(无 scope)"
+    except Exception:
+        _cw = "(查归属出错)"
+    logger.info("create_session[%s] 归属登记: template_id=%r → cowork=%r", session_id, template_id, _cw)
     # 新建会话时用户在输入框选的工作模式：先落库，使首个 run 及低完整性激活都用这个模式；
     # 未选（req.mode 为空）则不动，get() 回落默认 semiauto。非法值忽略。
     _modes = deps.get_bash_review_modes()
@@ -334,13 +345,18 @@ async def create_session(
     # 整个工作区，几秒很正常），中间发出的事件没有订阅者，总线又不回放 → 永久丢失。
     # 现象是新建会话的第一轮只剩半截：界面上留着一个工具调用，回复不见了，
     # 而事件表里一切完整、重启也补不回来（history 读的是帧日志，不是重放事件）。
+    logger.info("create_session[%s] 即将 start_session: template_id=%r account=%r model=%r",
+                session_id, template_id, llm_account, llm_model)
     feed = _sm.open_event_feed(runtime, session_id)
     try:
         handle = await runtime.start_session(params)
     except Exception:
+        logger.exception("create_session[%s] start_session 抛异常", session_id)
         if feed is not None:
             await feed.close()
         raise
+    logger.info("create_session[%s] start_session 返回: handle.session_id=%s agent_id=%s",
+                session_id, handle.session_id, handle.agent_id)
 
     # start_session 在返回前已经调度执行 task。先把登录用户写进内存 session，再进行任何
     # 会让出事件循环的数据库操作，避免极快 skill 在 save_workspace 期间结束、Reporter
@@ -364,7 +380,9 @@ async def create_session(
     # 持久化 workspace 到 sessions 行（供进程重启后 resume 重新登记）。须在 start_session 之后：
     # 此刻 SESSION_CREATED 已被 ProjectionUpdater 同步处理、sessions 行已存在。
     if req.workspace and _sm._state_store is not None:
+        logger.info("create_session[%s] save_workspace 开始: %r", handle.session_id, req.workspace)
         await _sm._state_store.save_workspace(handle.session_id, req.workspace)
+        logger.info("create_session[%s] save_workspace 完成", handle.session_id)
 
     _rw = deps.get_rewind_manager()
     _msg = {
@@ -378,11 +396,15 @@ async def create_session(
     # rewind：首轮动手前拍工作区初始状态（回滚到此 = 撤销全部改动，回到会话开始时）。无工作区则跳过。
     _ws = getattr(entry, "workspace", None)
     if _rw is not None and _ws:
+        logger.info("create_session[%s] snapshot_turn 开始(拍工作区初始快照): %r", handle.session_id, _ws)
         await _rw.snapshot_turn(handle.session_id, entry.turn_seq, _ws)
+        logger.info("create_session[%s] snapshot_turn 完成", handle.session_id)
 
     entry._consumer_token += 1
     # 把开跑前就挂上的那条订阅交给消费者；feed 为 None 时它自己开一条。
     asyncio.create_task(_sm.session_consumer(entry, runtime, entry._consumer_token, feed=feed))
+    logger.info("create_session[%s] 完成→返回: template_id=%r status=%s consumer 已调度",
+                handle.session_id, template_id, entry.status)
 
     return entry.to_dict()
 

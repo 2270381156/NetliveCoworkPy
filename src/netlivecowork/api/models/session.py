@@ -989,7 +989,14 @@ async def session_consumer(entry: SessionEntry, runtime: Any, token: int,
     if feed is None:
         feed = EventFeed(runtime.event_bus, entry.session_id)
     try:
+        logger.info("session_consumer[%s] 开始消费事件流 (token=%d, status=%s)",
+                    entry.session_id, token, entry.status)
+        _ev_n = 0
         async for ev in feed:
+            _ev_n += 1
+            _et = ev.get("type") if isinstance(ev, dict) else type(ev).__name__
+            logger.info("session_consumer[%s] 事件#%d type=%s status=%s",
+                        entry.session_id, _ev_n, _et, entry.status)
             if entry._consumer_token != token:
                 break
             await entry.append_event(ev)
