@@ -63,6 +63,9 @@ class MarketItem:
     description: str | None = None
     updater: str | None = None
     create_time: str | None = None
+    #: 下载/引用次数。**各家字段名不同**，由 adapter 翻译过来；拿不到就是 None，
+    #: 界面据此决定显不显示这一项——0 与"不知道"是两回事，不能都当 0 显示。
+    download_count: int | None = None
 
 
 class SkillMarketAdapter(ABC):

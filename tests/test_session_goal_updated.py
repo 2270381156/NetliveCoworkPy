@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from ctx_weft.core.events.types import Event, EventType
-from ipmastercowork.api.models.session import _HISTORY_TYPES, SessionEntry
+from netlivecowork.api.models.session import _HISTORY_TYPES, SessionEntry
 
 
 def _entry() -> SessionEntry:

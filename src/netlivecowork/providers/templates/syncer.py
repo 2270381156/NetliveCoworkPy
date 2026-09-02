@@ -17,6 +17,35 @@ from netlivecowork.providers.templates.store import TemplateStore
 logger = logging.getLogger(__name__)
 
 
+def _template_id_of(template_dir: Path, template: object) -> str:
+    """模板 id 以**目录名**为准，不以文件里写的为准。
+
+    目录名就是 cowork id，而 cowork id 是这个系统里到处在用的身份：会话的 template_id、
+    entitled.json 的清单、skill 的归属、LLM 的 allow 名单，全都是它。SOUL.md 里的 name
+    只是套件作者写的一行字。
+
+    两者不一致的后果是**一个装了却用不了的智能体**：`/coworks` 按目录列，界面上有它；
+    模板却注册在文件里那个名字下，建会话时按 cowork id 查不到，一路抛成
+
+        TemplateNotFoundError: Template 'agent:ipmaster' not found
+
+    → 前端只看到一行 500。用户明明有权限，问题在打包。更糟的是同名互相覆盖：几个套件
+    的 SOUL.md 都写 name: default 的话，7 个目录只入库一条，最后扫到谁就指向谁。
+
+    所以这里以目录名为准让它能用，同时把不一致喊出来给运维看：
+    能用是对用户的，日志是给修包的人的。
+    """
+    from_file = str(getattr(template, "id", "") or "").strip()
+    tid = template_dir.name
+    if from_file and from_file != tid:
+        logger.warning(
+            "TemplateSyncer: 套件目录 '%s' 里的 SOUL.md 写的是 name=%r，两者不一致。"
+            "已按目录名注册（cowork id 才是身份）；请修正这个套件的 SOUL.md。",
+            tid, from_file,
+        )
+    return tid
+
+
 class TemplateSyncer:
 
     def __init__(self, store: TemplateStore, loader: TemplateLoader) -> None:
@@ -33,7 +62,7 @@ class TemplateSyncer:
         synced_ids: set[str] = set()
 
         for template_dir, template in scanned:
-            tid = template.id
+            tid = _template_id_of(template_dir, template)
             synced_ids.add(tid)
             await self._store.save({
                 "id": tid,
@@ -56,11 +85,12 @@ class TemplateSyncer:
         """注册单个 template 目录，返回 template id。"""
         template = self._loader.load(template_dir)
         await self._store.save({
-            "id": template.id,
+            "id": _template_id_of(template_dir, template),
             "name": template.name,
             "version": template.version,
             "description": template.description,
             "template_dir": str(template_dir.resolve()),
         })
-        logger.info("TemplateSyncer: registered template '%s' from '%s'", template.id, template_dir)
-        return template.id
+        tid = _template_id_of(template_dir, template)
+        logger.info("TemplateSyncer: registered template '%s' from '%s'", tid, template_dir)
+        return tid

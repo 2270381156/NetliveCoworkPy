@@ -131,6 +131,28 @@ def _to_item(item: dict) -> MarketItem:
         id=str(item["id"]),
         name=item["name"],
         description=item.get("description"),
-        updater=item.get("updater"),
+        updater=_first(item, ("updater", "creatorName", "creator_name", "author")),
         create_time=item.get("createTime"),
+        download_count=_int_or_none(item, ("download_count", "downloadCount", "downloads")),
     )
+
+
+def _first(item: dict, keys: tuple[str, ...]) -> str | None:
+    """取第一个有值的字段——各家作者字段名不同，见 mythos 适配器里的同名函数。"""
+    for k in keys:
+        v = item.get(k)
+        if v not in (None, ""):
+            return str(v)
+    return None
+
+
+def _int_or_none(item: dict, keys: tuple[str, ...]) -> int | None:
+    for k in keys:
+        v = item.get(k)
+        if v is None or v == "":
+            continue
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            continue
+    return None

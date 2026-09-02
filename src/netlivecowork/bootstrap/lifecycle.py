@@ -165,6 +165,10 @@ async def _start_db(hr: HostRuntime, h: Handles):
     snapshot_every_n, snapshot_keep = cfg.snapshot_every_n, cfg.snapshot_keep
     runtime = hr.core
 
+    # 存量导入 —— **必须在 init_db 之前**：它要整个换掉会话库文件，
+    # 库一旦连上就换不了了（Windows 上文件还被占着）。
+    _import_legacy_if_possible()
+
     factory = await init_db(hr.db_url)
 
     # 一次性数据迁移（gated by applied_migrations；已应用则廉价 no-op）。须在 recover /
@@ -269,3 +273,45 @@ async def _recover(runtime: Any, state_store: Any) -> None:
     reconciled = await reconcile_stranded_running_sessions(state_store, runtime.event_store)
     if reconciled:
         logger.info("Recovery: reconciled %d stranded RUNNING session(s) to event truth", reconciled)
+
+
+
+def _import_legacy_if_possible() -> None:
+    """把上一代 IPMaster-Cowork 的数据搬过来 —— 一次性，且**只在新版还是空的时候**。
+
+    三道闸（见 migration/gate.py）：没导过、旧目录在、新版一条会话都没有。
+    最后一条把"合并语义"整个挡在外面：走到这里新版必然是空的，COPY 就是 COPY。
+
+    失败不能挡启动：导不进来最坏是用户看不到历史会话，而挡住启动是连新会话都建不了。
+    """
+    try:
+        from netlivecowork import paths
+        from netlivecowork.migration import gate
+        from netlivecowork.migration.apply import (
+            import_legacy,
+            legacy_dir_from_env,
+            own_session_count,
+        )
+
+        legacy = legacy_dir_from_env()
+        if legacy is None:
+            return                      # 没下发旧目录 = 这个部署没有上一代
+        app_data = paths.data_dir().parent
+        n = own_session_count(app_data)
+        if not gate.can_import(app_data, own_session_count=n):
+            if n > 0 and not gate.already_imported(app_data):
+                logger.info(
+                    "存量导入：新版已有 %d 条会话，按设计不导入（避免合并语义）。旧数据仍在 %s",
+                    n, legacy,
+                )
+            return
+        logger.info("存量导入：从 %s 搬到 %s", legacy, app_data)
+        res = import_legacy(legacy, app_data)
+        gate.mark_imported(app_data)
+        logger.info(
+            "存量导入完成：搬了 %d 项，跳过 %d 项%s",
+            len(res.copied), len(res.skipped),
+            ("，失败 %s" % res.failed) if res.failed else "",
+        )
+    except Exception:
+        logger.warning("存量导入失败，跳过（不影响使用）", exc_info=True)
