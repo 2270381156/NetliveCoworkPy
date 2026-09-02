@@ -40,6 +40,7 @@ test('cloud payload contains only the five token-usage contract fields', () => {
 
   assert.deepStrictEqual(payload, {
     sessionId: 'desktop:session:1',
+    cowork: '',
     inputTokens: 10,
     outputTokens: 2,
     llmAccount: 'account-a',
@@ -47,6 +48,7 @@ test('cloud payload contains only the five token-usage contract fields', () => {
   });
   assert.deepStrictEqual(Object.keys(payload), [
     'sessionId',
+    'cowork',
     'inputTokens',
     'outputTokens',
     'llmAccount',

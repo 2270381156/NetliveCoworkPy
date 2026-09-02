@@ -50,6 +50,7 @@ function buildTokenUsagePayload(event) {
   const value = event && typeof event === 'object' ? event : {};
   return {
     sessionId: value.session_id,
+    cowork: value.cowork || '',
     inputTokens: value.input_tokens || 0,
     outputTokens: value.output_tokens || 0,
     llmAccount: value.llm_account || '',
