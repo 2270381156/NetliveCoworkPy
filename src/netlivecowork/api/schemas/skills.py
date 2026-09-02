@@ -30,9 +30,12 @@ class SkillMarketTab(BaseModel):
 class RemoteCatalogItem(BaseModel):
     source: str               # "cowork" | "mythos" —— 程序用于下载路由，UI 不展示
     id: str
+    #: 这条目录项在**当前页签作用域**下的确定性引用 ID（不透明字符串）。
+    #: 前端据它与已引用列表精确配对：同 source/id 在通用与专属市场是两条不同的引用。
+    reference_id: str
     name: str
     description: str | None
-    updater: str | None = None            # 作者。各家字段名不同（netcowork 回 creatorName），由 adapter 归一
+    updater: str | None = None            # 作者。各家字段名不同（netcowork 回 creatorName），由 adapter归一
     #: 下载/引用次数。**必须在这里声明**——response_model 没有的字段 FastAPI 会直接丢掉，
     #: 表现是后端算出来了、接口里却没有，而两边都不报错。
     download_count: int | None = None
