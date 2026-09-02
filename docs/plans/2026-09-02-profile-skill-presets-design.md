@@ -57,7 +57,9 @@ Profile 作者不重复声明 `marketScope`。系统根据包含该预置项的 
 - 该来源必须能在 profile 的有效市场作用域内解析。
 - 对预置数量和元数据长度设置上限。
 
-运行期解析保持现有容错原则：单个非法预置项被跳过并记录日志，不阻止 profile 或应用启动。
+本仓负责定义上述契约、执行运行期数量/长度上限并提供测试。Profile 的制作/发布服务不在本仓中；发布侧必须在接入此字段时复用同一契约做严格拒绝，这是发布依赖，不伪装成本仓已覆盖的实现任务。
+
+运行期解析保持现有容错原则：超过上限或单个非法预置项被跳过并记录日志，不阻止已经安装的 profile 或应用启动。
 
 ## 引用身份
 
@@ -74,9 +76,33 @@ market_scope + source + remote_id + principal
 
 对外的引用 ID 是不透明字符串。前端和 API 不再通过拆分 `source:remote_id` 推断来源，所有查找和删除通过引用库完成。
 
+### 市场页“已引用”的精确语义
+
+`is_pulled` 从“当前用户是否有一条同 `source + remote_id` 且归属可见的引用”改为“当前市场作用域、来源、remote ID 和用户主体组成的**精确引用身份**是否存在”。因此：
+
+- 在 IPMaster 专属市场引用的条目，不再让通用市场或其他 profile 的同 ID 条目显示“已引用”。
+- 通配归属只扩大该引用的可见范围，不改变它来自哪个市场，也不会让另一个市场的同 ID 条目显示“已引用”。
+- v2 引用缺少市场来源证据，迁移时按 `market_scope=general` 处理；它只会在通用市场显示“已引用”。如果用户需要专属市场版本，应在该 profile 页签重新引用。
+
+这是用户可见但必要的纠错，替换当前依赖 `source:id` 的跨作用域命中语义，并与 H3 的“不跨市场回落”保持一致。
+
 ## 持久化模型
 
-引用库升级后分开保存：
+引用库升级后仍只使用一个 `skill_references.json` 文件。引用、随包默认播种账本和 profile 预置账本都位于同一个 JSON 根对象，确保一次 `Path.replace` 原子提交：
+
+```json
+{
+  "version": 3,
+  "references": {},
+  "seeded_defaults": [],
+  "preset_ledger": {
+    "active_bindings": {},
+    "opt_outs": []
+  }
+}
+```
+
+逻辑模型为：
 
 ```text
 SkillReference
@@ -99,6 +125,8 @@ Mythos 等按用户可见的来源按 W3 用户名分别记录引用、绑定与
 - 现有 v2 `source:remote_id` 引用迁移为 `market_scope=general`。
 - 现有 `owner` 转成按用户来源的 `principal`，其他来源使用 `*`。
 - 现有 `labels` 转成 `manual_labels`，升级不改变既有可见范围。
+- 现有 `seeded_defaults` 不能改用新的引用 hash 直接查询。迁移将旧 `source:remote_id` 记账项转换为 v3 的稳定 bundled-default seed ID；`defaults.py` 同步改为按该 seed ID 防复活，并用 `market_scope=general` 构造新版引用。
+- 随包全局默认播种机制继续保留，但与 profile 预置协调器相互独立；用户删过的随包默认引用在 v2→v3 升级后仍不得复活。
 - 新旧引用 ID 的兼容解析保留一个迁移窗口。
 - 引用库和账本在同一份原子写入中提交；迁移失败保留旧文件并用旧数据启动。
 
@@ -131,6 +159,7 @@ ProfileSkillPresetReconciler
 - 减少预置：撤销该 profile 的绑定；无手工归属和其他 profile 绑定时删除引用。
 - Profile 收回：按同样规则撤销该 profile 的全部绑定。
 - 用户删除：删除引用，并为相关 profile/用户/预置身份写入 opt-out。
+- 用户修改归属：写入 `manual_labels`；如果用户从有效归属中移除了某个 active preset binding 对应的 profile，同时为该 binding 写入 opt-out，避免下一次协调把它加回。
 - 用户重新从市场点击“引用”：清除匹配的 opt-out，恢复为用户主动引用。
 - 多 profile 共用：preset binding 取并集，一个 profile 更新不影响其他 profile。
 - 用户把引用改为通用或其他 profile：保存为 manual labels，后续 profile 回收时保留。
@@ -164,16 +193,17 @@ Electron 显示现有“已引用”状态
 - `_setup_cowork()` 先完成 profile 对账和市场注册。
 - `_register_skills()` 在 provider 注册前完成共享来源的首次协调。
 - `POST /skills/current-user` 设置 W3 用户名后协调该用户的按用户来源。
-- `/coworks/recheck` 与启动使用同一 profile 派生状态刷新入口，并调用同一个协调器。
+- `/coworks/recheck` 与启动使用同一 profile 派生状态刷新入口，并调用同一个协调器；recheck 从 `current_user.get_current_username()` 读取当前 W3 用户，同时协调共享来源和该用户的 Mythos 预置。
 - 只有协调原子提交成功后才使 Skill 执行路由索引失效。
 - `ReferencedSkillCapabilityProvider` 下载内容时必须把引用保存的 `market_scope` 传给市场服务。
+- 作用域解析复用 `adapters/scopes.py` 已有的 `GENERAL_SCOPE`、`MarketScope` 和 `build_scopes()`；不得在 registry 中定义第二套 `GENERAL_SCOPE`。Profile 预置使用一个明确的 `resolve_profile_preset_scope()` 包装器调用该数据模型；地址相同的 profile 被合并时，解析为 `build_scopes()` 保留的有效作用域 ID，而不是一律退回 `general`。
 
 ## Electron 行为
 
 不增加新交互：
 
 - 预置引用出现在现有 Skill 列表中。
-- 用户登录并进入对应市场页签后，目录卡片返回现有 `is_pulled/is_referenced=true`，显示“已引用”。
+- 用户登录并进入对应市场页签后，目录卡片返回现有 `is_pulled=true`，显示“已引用”。
 - 用户删除后恢复现有“引用”操作。
 - “已引用”只表示本地已有引用元数据，不表示 ZIP 永久下载。
 
@@ -189,7 +219,7 @@ Electron 显示现有“已引用”状态
 ## 测试策略
 
 - Manifest：新字段解析、缺字段容错、重复项、非法来源和市场作用域校验。
-- 引用库：v2 到新版迁移、复合身份、W3 用户隔离、旧 ID 兼容和原子失败回滚。
+- 引用库：v2 到新版迁移、复合身份、W3 用户隔离、旧 ID 兼容、`seeded_defaults` 防复活迁移和原子失败回滚。
 - 协调器：新增、减少、profile 收回、多 profile 共用、用户删除、手工重新引用和元数据更新。
 - 启动接线：首次启动、`current-user`、`coworks/recheck` 调用同一协调器。
 - 下载路由：通用市场与 profile 专属市场使用相同 remote ID 时仍路由到正确服务器。
@@ -198,7 +228,7 @@ Electron 显示现有“已引用”状态
 
 ## 已接受的设计决策
 
-- 使用 profile 预置协调器，不复用全局默认播种文件，也不在启动时调用市场下载。
+- 使用 profile 预置协调器，不拿全局默认播种文件承载 profile 数据，也不在启动时调用市场下载；现有全局默认播种机制继续保留并迁移其防复活账本。
 - Profile 携带完整 L1 元数据，Skill ZIP 在实际使用时临时下载。
 - 用户删除优先，普通启动不得复活。
 - Profile 减少预置和收回时执行差量回收。
