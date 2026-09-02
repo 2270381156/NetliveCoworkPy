@@ -98,7 +98,7 @@ function createTokenUsageController({
       const controller = new AbortControllerImpl();
       cloudAbortController = controller;
       try {
-        await postEvent(entry.event, context, cloudBase, controller.signal);
+        await postEvent(entry.event, context, cloudBase, controller.signal, entry.itemId);
       } catch (_) {
         if (controller.signal.aborted || transitioning) break;
         continue; // keep this event in the durable retry queue
