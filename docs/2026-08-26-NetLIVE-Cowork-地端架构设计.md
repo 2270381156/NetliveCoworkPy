@@ -313,6 +313,26 @@ market_registry.install_cowork_markets(_cowork_markets)
 
 页签顺序 = `(order, id)`，与主界面智能体下拉一致。
 
+### 5.6 profile 预置 skill（`skills.presets`）
+
+套件清单可声明默认 skill 引用（需求附录 A「skill·预置」）。系统在三个入口自动差量协调，
+用户无需手动引用：
+
+- **启动**（`_register_skills`，共享来源如 cowork；此时还没登录）；
+- **W3 登录**（`POST /skills/current-user`，按用户来源如 mythos——principal 已知才协调）；
+- **`/coworks/recheck` 与启动共用** `apply_cowork_state` 的派生状态清单（读当前
+  `current_user`），三个入口同一个 `ProfileSkillPresetReconciler`。
+
+协调语义：profile 携带**完整 L1 元数据**，启动期不下载 ZIP（实际使用时才临时下载）；
+作用域由套件市场配置推导（`scopes.py` 的 `build_scopes` + `effective_scope_id`，遵守 H3
+不跨市场回落）；用户删除写 opt-out 不复活，重新手工引用清 opt-out；profile 减预置/收回
+只撤自己的绑定（有效归属 = 手工 ∪ 预置，引用无人认领才删）。引用身份是
+`(market_scope, source, remote_id, principal)` 四元组，对外为不透明 `reference_id`；
+引用库、随包播种账本、预置账本同住一份 `skill_references.json`、同一次原子提交。
+
+Electron 不加任何新状态：预置引用就显示现有"已引用"，目录卡片按后端 `reference_id`
+精确配对（同一 source/id 在通用与专属市场不再串台）。
+
 ---
 
 ## 6. 会话与事件
