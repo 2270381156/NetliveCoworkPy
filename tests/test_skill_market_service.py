@@ -14,7 +14,12 @@ from netlivecowork.providers.capability.skills.errors import SkillError
 from netlivecowork.providers.capability.skills.services.market import SkillMarketService
 from netlivecowork.providers.capability.skills.adapters.mythos import MythosMarketAdapter
 from netlivecowork.providers.capability.skills.adapters.cowork import CoworkMarketAdapter
-from netlivecowork.providers.capability.skills.references.store import SkillReference, SkillReferenceStore
+from netlivecowork.providers.capability.skills.adapters.scopes import GENERAL_SCOPE
+from netlivecowork.providers.capability.skills.references.store import (
+    ReferenceIdentity,
+    SkillReference,
+    SkillReferenceStore,
+)
 from netlivecowork.providers.capability.skills.legacy import SkillPullStore
 
 
@@ -230,7 +235,8 @@ def test_mythos_failure_raises(monkeypatch):
 
 def test_catalog_merges_both_sources_and_tags(tmp_path, monkeypatch):
     svc, store = _market(tmp_path)
-    store.add_reference(SkillReference(source="mythos", remote_id="9", name="Myth", owner="a001"))   # 已引用
+    store.add_reference(SkillReference(
+        identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "9", "a001"), name="Myth"))           # 已引用
     routes = {
         ("GET", "http://srv/api/skills"): _resp(200, json_body=[{"id": "c1", "name": "Cow", "createTime": "t1"}]),
         ("POST", f"{_MYTHOS}{_QUERY}"): _resp(200, json_body={"total": 1, "data": [
@@ -269,7 +275,8 @@ def test_pull_dispatches_by_source_and_records(tmp_path, monkeypatch):
 
     # 引用式：下载一次抽元数据 → 存引用（不解压到 skills_dir）。mythos 记 owner=当前用户。
     out = svc.pull("mythos", "9", "Remote Skill", "a001")
-    assert out == {"skill_id": "mythos:9", "name": "Remote Skill"}
+    myth_id = ReferenceIdentity(GENERAL_SCOPE, "mythos", "9", "a001").reference_id
+    assert out == {"skill_id": myth_id, "name": "Remote Skill"}
     assert not (tmp_path / "skills").exists()            # 不再解压到本地
     ref = store.get_reference("mythos", "9")
     assert ref is not None and ref.name == "Remote Skill" and ref.owner == "a001"

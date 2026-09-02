@@ -44,13 +44,16 @@ def test_list_maps_to_response():
 
 
 def test_list_includes_cloud_references():
-    from netlivecowork.providers.capability.skills.references.store import SkillReference
+    from netlivecowork.providers.capability.skills.adapters.scopes import GENERAL_SCOPE
+    from netlivecowork.providers.capability.skills.references.store import ReferenceIdentity, SkillReference
     svc = _FakeLocal(listing=[])
-    ref = SkillReference(source="mythos", remote_id="m1", name="Cloud", description="c", triggers=["x"])
+    ref = SkillReference(
+        identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "m1"), name="Cloud",
+        description="c", triggers=["x"])
     out = skills_api.list_local_skills(service=svc, ref_store=_FakeRefStore([ref]))
     assert out[0].origin == "cloud"
     assert out[0].source == "mythos"
-    assert out[0].skill_id == "mythos:m1"
+    assert out[0].skill_id == ref.key   # v3 起是不透明 reference_id
 
 
 def test_delete_cloud_removes_reference():

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import zipfile
 
 import pytest
@@ -10,7 +11,13 @@ import pytest
 from ctx_weft.protocols.context import ProviderContext
 from netlivecowork.providers.capability.skills.runtime import materialize
 from netlivecowork.providers.capability.skills.legacy import migrate_pulled_to_references
-from netlivecowork.providers.capability.skills.references.store import SkillReference, SkillReferenceStore
+from netlivecowork.providers.capability.skills.adapters.scopes import GENERAL_SCOPE
+from netlivecowork.providers.capability.skills.references.store import (
+    ANY_LABEL,
+    ReferenceIdentity,
+    SkillReference,
+    SkillReferenceStore,
+)
 from netlivecowork.providers.capability.skills.provider import ReferencedSkillCapabilityProvider
 from netlivecowork.providers.capability.skills.runtime.reporting import (
     consume_skill_own_reporting,
@@ -50,10 +57,10 @@ class _FakeMarket:
 
 def test_reference_store_list_visible_filters_mythos_by_owner(tmp_path):
     s = SkillReferenceStore(tmp_path)
-    s.add_reference(SkillReference(source="mythos", remote_id="1", name="a", owner="alice"))
-    s.add_reference(SkillReference(source="mythos", remote_id="2", name="b", owner="bob"))
-    s.add_reference(SkillReference(source="mythos", remote_id="3", name="legacy", owner=None))  # 旧数据
-    s.add_reference(SkillReference(source="cowork", remote_id="4", name="pub"))                  # 公开
+    s.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "1", "alice"), name="a"))
+    s.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "2", "bob"), name="b"))
+    s.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "3"), name="legacy"))  # 旧数据
+    s.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "cowork", "4"), name="pub"))     # 公开
     names = lambda u: sorted(r.name for r in s.list_visible(u, {"mythos"}))
     assert names("alice") == ["a", "legacy", "pub"]   # bob 的隐藏；legacy(owner空)+cowork 都可见
     assert names("bob") == ["b", "legacy", "pub"]
@@ -85,9 +92,9 @@ def test_prune_null_references(tmp_path):
     """删除 description 为空的坏引用；有 description 的保留。"""
     from netlivecowork.providers.capability.skills.references.defaults import prune_null_references
     ref = SkillReferenceStore(tmp_path / "data")
-    ref.add_reference(SkillReference(source="cowork", remote_id="a", name="A", description=None))
-    ref.add_reference(SkillReference(source="cowork", remote_id="b", name="B", description="  "))   # 空白也算空
-    ref.add_reference(SkillReference(source="mythos", remote_id="c", name="C", description="real"))
+    ref.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "cowork", "a"), name="A", description=None))
+    ref.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "cowork", "b"), name="B", description="  "))   # 空白也算空
+    ref.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "c"), name="C", description="real"))
 
     n = prune_null_references(ref)
     assert n == 2
@@ -120,7 +127,7 @@ def test_migrate_broken_keeps_existing_good_reference(tmp_path):
     pull = SkillPullStore(data_dir)
     pull.record_pulled("cowork", "g1", "broken")
     ref = SkillReferenceStore(data_dir)
-    ref.add_reference(SkillReference(source="cowork", remote_id="g1", name="Good", description="real desc"))
+    ref.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "cowork", "g1"), name="Good", description="real desc"))
 
     migrate_pulled_to_references(pull, ref, skills_dir)
     r = ref.get_reference("cowork", "g1")
@@ -140,8 +147,8 @@ def test_materialized_cleans_up():
 
 def test_referenced_provider_filters_and_materializes(tmp_path):
     store = SkillReferenceStore(tmp_path)
-    store.add_reference(SkillReference(source="mythos", remote_id="1", name="demo", description="a", owner="alice"))
-    store.add_reference(SkillReference(source="mythos", remote_id="2", name="secret", owner="bob"))
+    store.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "1", "alice"), name="demo", description="a"))
+    store.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "2", "bob"), name="secret"))
     cur = {"u": "alice"}
     market = _FakeMarket({"mythos:1": _zip("demo", extra={"scripts/run.py": "print('hi')"})})
     p = ReferencedSkillCapabilityProvider(store, market, current_username_fn=lambda: cur["u"])
@@ -173,7 +180,7 @@ def test_referenced_provider_none_description_coalesced(tmp_path):
     from ctx_weft.core.utils import content_to_text
 
     store = SkillReferenceStore(tmp_path)
-    store.add_reference(SkillReference(source="cowork", remote_id="1", name="nodesc", description=None))
+    store.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "cowork", "1"), name="nodesc", description=None))
     p = ReferencedSkillCapabilityProvider(store, _FakeMarket(), current_username_fn=lambda: "alice")
     ctx = ProviderContext(session_id="s1")
 
@@ -232,7 +239,7 @@ def test_download_retries(tmp_path):
 
 def test_referenced_provider_offline_degrades(tmp_path):
     store = SkillReferenceStore(tmp_path)
-    store.add_reference(SkillReference(source="mythos", remote_id="1", name="demo", owner="alice"))
+    store.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "1", "alice"), name="demo"))
     p = ReferencedSkillCapabilityProvider(store, _FakeMarket(fail=True), current_username_fn=lambda: "alice")
     ctx = ProviderContext(session_id="s1")
 
@@ -268,7 +275,7 @@ def test_reporting_detection_requires_specific_datalink_evidence(tmp_path):
 def test_referenced_provider_captures_reporting_before_temp_cleanup(tmp_path):
     store = SkillReferenceStore(tmp_path)
     store.add_reference(
-        SkillReference(source="mythos", remote_id="1", name="demo", owner="alice")
+        SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "1", "alice"), name="demo")
     )
     market = _FakeMarket(
         {
@@ -338,8 +345,8 @@ def test_provider_description_states_usage_rules() -> None:
 def test_store_filters_by_what_it_is_told_not_by_hardcoded_source(tmp_path):
     """同一批数据，换一组 per_user_sources 就换一种过滤结果 —— 说明规则来自参数。"""
     s = SkillReferenceStore(tmp_path)
-    s.add_reference(SkillReference(source="mythos", remote_id="1", name="m-alice", owner="alice"))
-    s.add_reference(SkillReference(source="cowork", remote_id="2", name="c-bob", owner="bob"))
+    s.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "1", "alice"), name="m-alice"))
+    s.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "cowork", "2", "bob"), name="c-bob"))
 
     # 只有 mythos 按人分：cowork 那条即使 owner 是别人也照常显示（它是公开市场）
     names = sorted(r.name for r in s.list_visible("zhang", {"mythos"}))
@@ -360,8 +367,8 @@ def test_a_third_per_user_market_needs_no_change_here(tmp_path):
     持久化层里没有任何一处写着市场的名字，所以这里不需要改代码就支持了 'newmarket'。
     """
     s = SkillReferenceStore(tmp_path)
-    s.add_reference(SkillReference(source="newmarket", remote_id="9", name="别人的", owner="li"))
-    s.add_reference(SkillReference(source="newmarket", remote_id="8", name="我的", owner="zhang"))
+    s.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "newmarket", "9", "li"), name="别人的"))
+    s.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "newmarket", "8", "zhang"), name="我的"))
 
     names = sorted(r.name for r in s.list_visible("zhang", {"newmarket"}))
     assert names == ["我的"]
@@ -374,7 +381,7 @@ def test_owner_missing_is_not_hidden(tmp_path):
     而隐藏反而会让老用户的 skill 凭空消失。
     """
     s = SkillReferenceStore(tmp_path)
-    s.add_reference(SkillReference(source="mythos", remote_id="1", name="老数据", owner=None))
+    s.add_reference(SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "1"), name="老数据"))
     assert [r.name for r in s.list_visible("zhang", {"mythos"})] == ["老数据"]
 
 
@@ -389,3 +396,119 @@ def test_market_reports_per_user_sources_from_adapters():
         store=None,
     )
     assert m.per_user_sources() == {"mythos"}
+
+
+# ── v3：复合引用身份（market_scope + source + remote_id + principal）──────────
+
+def test_reference_identity_separates_market_scope_and_principal():
+    """同一 source/remote_id 在通用市场、profile 专属市场、不同 W3 用户下是三条引用。"""
+    a = ReferenceIdentity("general", "mythos", "1129", "alice")
+    b = ReferenceIdentity("ipmaster", "mythos", "1129", "alice")
+    c = ReferenceIdentity("general", "mythos", "1129", "bob")
+    assert len({a.reference_id, b.reference_id, c.reference_id}) == 3
+    assert a.reference_id == ReferenceIdentity("general", "mythos", "1129", "alice").reference_id
+
+
+def test_v2_reference_migrates_without_changing_visibility(tmp_path):
+    """v2 记录读进 v3 模型：general 作用域、owner→principal、labels→manual_labels，
+    可见范围不变。"""
+    (tmp_path / "skill_references.json").write_text(json.dumps({
+        "version": 2,
+        "references": {"mythos:9": {
+            "source": "mythos", "remote_id": "9", "name": "M",
+            "owner": "alice", "labels": ["ipmaster"],
+        }},
+    }), encoding="utf-8")
+    ref = SkillReferenceStore(tmp_path).list_references()[0]
+    assert ref.identity == ReferenceIdentity("general", "mythos", "9", "alice")
+    assert ref.manual_labels == ("ipmaster",)
+    assert ref.effective_labels == ("ipmaster",)
+
+
+def test_effective_labels_union_and_wildcard_fallback():
+    """有效归属 = manual ∪ preset；两边都空才回落通配。"""
+    preset_only = SkillReference(
+        identity=ReferenceIdentity("ipmaster", "mythos", "1"), name="p",
+        preset_bindings=("ipmaster",),
+    )
+    assert preset_only.effective_labels == ("ipmaster",)
+    both = SkillReference(
+        identity=ReferenceIdentity("ipmaster", "mythos", "1"), name="b",
+        manual_labels=("mbb",), preset_bindings=("ipmaster",),
+    )
+    assert both.effective_labels == ("ipmaster", "mbb")
+    bare = SkillReference(identity=ReferenceIdentity("general", "cowork", "1"), name="x")
+    assert bare.effective_labels == (ANY_LABEL,)
+
+
+def test_owner_compat_maps_shared_principal_to_none():
+    """v2 兼容读法：principal="*" 读成 owner=None（共享来源没有引用者）。"""
+    shared = SkillReference(identity=ReferenceIdentity("general", "cowork", "1"), name="s")
+    mine = SkillReference(identity=ReferenceIdentity("general", "mythos", "1", "alice"), name="m")
+    assert shared.owner is None
+    assert mine.owner == "alice"
+    assert (shared.source, shared.remote_id, shared.market_scope) == ("cowork", "1", "general")
+
+
+def test_v3_store_roundtrip_writes_one_file_with_ledgers(tmp_path):
+    """引用、随包播种账本、预置账本同一份 JSON；reference_id 是 dict 键。"""
+    store = SkillReferenceStore(tmp_path)
+    ref = SkillReference(
+        identity=ReferenceIdentity("ipmaster", "mythos", "1", "alice"),
+        name="x", description="d", preset_bindings=("ipmaster",),
+    )
+    store.add_reference(ref)
+
+    data = json.loads((tmp_path / "skill_references.json").read_text(encoding="utf-8"))
+    assert data["version"] == 3
+    assert list(data["references"]) == [ref.identity.reference_id]
+    assert set(data["preset_ledger"]) == {"active_bindings", "opt_outs"}
+    assert data["seeded_defaults"] == []
+
+    got = store.get_by_id(ref.identity.reference_id)
+    assert got is not None and got.preset_bindings == ("ipmaster",)
+    assert store.get_by_id("ref:v3:deadbeef") is None
+
+
+def test_mutate_keeps_previous_complete_state_when_callback_fails(tmp_path):
+    """事务回调中途抛错 → 文件保持旧状态，不出现半提交。"""
+    store = SkillReferenceStore(tmp_path)
+    store.add_reference(
+        SkillReference(identity=ReferenceIdentity("general", "cowork", "1"), name="a", description="d")
+    )
+    before = (tmp_path / "skill_references.json").read_text(encoding="utf-8")
+
+    def boom(data: dict) -> None:
+        data["references"]["ref:v3:zzz"] = {"source": "cowork"}
+        raise OSError("disk full")
+
+    with pytest.raises(OSError):
+        store.mutate(boom)
+    assert (tmp_path / "skill_references.json").read_text(encoding="utf-8") == before
+
+
+def test_legacy_get_reference_raises_on_ambiguity(tmp_path):
+    """旧式 (source, remote_id) 查找遇到作用域重复必须大声失败，不许悄悄挑一家。"""
+    store = SkillReferenceStore(tmp_path)
+    store.add_reference(
+        SkillReference(identity=ReferenceIdentity("general", "mythos", "9"), name="g", description="d")
+    )
+    store.add_reference(
+        SkillReference(identity=ReferenceIdentity("ipmaster", "mythos", "9"), name="s", description="d")
+    )
+    with pytest.raises(ValueError):
+        store.get_reference("mythos", "9")
+    assert store.is_referenced("mythos", "9") is True
+
+
+def test_set_manual_labels_by_opaque_id(tmp_path):
+    store = SkillReferenceStore(tmp_path)
+    ref = SkillReference(
+        identity=ReferenceIdentity("general", "cowork", "1"), name="a", manual_labels=("ipmaster",)
+    )
+    store.add_reference(ref)
+    store.set_manual_labels(ref.identity.reference_id, ["mbb"])
+    got = store.get_by_id(ref.identity.reference_id)
+    assert got is not None and got.manual_labels == ("mbb",)
+    store.remove_by_id(ref.identity.reference_id)
+    assert store.list_references() == []

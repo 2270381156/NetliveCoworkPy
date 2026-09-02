@@ -223,6 +223,7 @@ class _RefStore:
 class _Ref:
     def __init__(self, key, labels):
         self.key, self.labels = key, labels
+        self.source, _, self.remote_id = key.partition(":")
 
 
 class _MythosAdapter(_FakeAdapter):

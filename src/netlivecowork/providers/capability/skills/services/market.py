@@ -29,9 +29,15 @@ from ..adapters.base import (
     MarketItem,
     SkillMarketAdapter,
 )
+from ..adapters.scopes import GENERAL_SCOPE
 from ..errors import SkillError
 from ..runtime.materialize import materialized
-from ..references.store import SkillReference, SkillReferenceStore
+from ..references.store import (
+    ANY_PRINCIPAL,
+    ReferenceIdentity,
+    SkillReference,
+    SkillReferenceStore,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +78,7 @@ class SkillMarketService:
         再抛一次只是把"你没有这个权限"说成"系统故障"。
         """
         ctx = MarketContext(username=username)
-        pulled = self._usable_keys(username, cowork)
+        pulled = self._usable_identities(username, cowork)
         merged: list[dict] = []
         for name, adapter in self._adapters_for(cowork).items():
             merged.extend(self._tag(self._fetch(adapter, ctx), name, pulled))
@@ -100,8 +106,11 @@ class SkillMarketService:
             logger.warning("%s 市场拉取异常，跳过这一家", adapter.name, exc_info=True)
             return []
 
-    def _usable_keys(self, username: str, cowork: str | None) -> set[str]:
+    def _usable_identities(self, username: str, cowork: str | None) -> set[tuple[str, str]]:
         """这个页签下，哪些引用**真的能用**。用来算 `is_pulled`。
+
+        按 ``(source, remote_id)`` 匹配（v3 之前的既有语义）；精确到 market_scope 与
+        principal 的匹配在作用域路由那一步切换，此处先保行为不变。
 
         ⚠ **不能只问"引用库里有没有这条 key"**（`is_referenced`）。那样算出来的
         `is_pulled` 会在**每一个** cowork 的页签上都是"已引用"，哪怕这条引用只归其中
@@ -119,9 +128,9 @@ class SkillMarketService:
         cid = (cowork or "").strip()
         if cid:
             refs = self._store.list_owned({cid}, base=refs)
-        return {r.key for r in refs}
+        return {(r.source, r.remote_id) for r in refs}
 
-    def _tag(self, items: list[MarketItem], source: str, pulled: set[str]) -> list[dict]:
+    def _tag(self, items: list[MarketItem], source: str, pulled: set[tuple[str, str]]) -> list[dict]:
         """MarketItem → 接口要的 dict，补上 source 与 is_pulled。
 
         这是**唯一**知道 source 从哪来的地方：它是 adapter 的名字，不是各家自报的字段。
@@ -135,7 +144,7 @@ class SkillMarketService:
                 "download_count": it.download_count,
                 "create_time": it.create_time,
                 "source": source,
-                "is_pulled": f"{source}:{it.id}" in pulled,
+                "is_pulled": (source, str(it.id)) in pulled,
             }
             for it in items
         ]
@@ -213,19 +222,24 @@ class SkillMarketService:
                 raise SkillError("PULL_EXTRACT_FAILED", f"解析 SKILL.md 失败: {e}")
 
         name = meta.name or skill_name
-        # owner 只对"按人可见"的市场有意义。原先写死 `if source == MYTHOS`——现在问 adapter，
+        # principal 只对"按人可见"的市场有意义。原先写死 `if source == MYTHOS`——现在问 adapter，
         # 加第三家按人分的市场时本文件不用改。
         per_user = adapter.visibility == VISIBILITY_PER_USER
+        # 作用域路由（按保存的 market_scope 下载）在下一步接入；这里先保持既有行为：
+        # 手工引用一律记 general 作用域，归属由页签决定。
         ref = SkillReference(
-            source=source,
-            remote_id=str(remote_id),
+            identity=ReferenceIdentity(
+                GENERAL_SCOPE,
+                source,
+                str(remote_id),
+                (username or ANY_PRINCIPAL) if per_user else ANY_PRINCIPAL,
+            ),
             name=name,
             description=meta.description or None,
             triggers=list(meta.triggers or []),
             skill_version=getattr(meta, "version", None),
-            owner=(username or None) if per_user else None,
             referenced_at=_now_iso(),
-            labels=(cid,) if cid else ("*",),
+            manual_labels=(cid,) if cid else ("*",),
         )
         self._store.add_reference(ref)
         return {"skill_id": ref.key, "name": name}
