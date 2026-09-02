@@ -25,7 +25,7 @@ import { prep } from './_setup'
 
 // 端口跟着环境走：写死 15926 的话，后端起在别的端口时整组 ECONNREFUSED，
 // 看起来像「后端挂了」，其实只是敲错了门。
-const API = `http://127.0.0.1:${process.env.BACKEND_PORT ?? '15926'}/api/v1`
+const API = `http://127.0.0.1:${process.env.BACKEND_PORT ?? '17926'}/api/v1`
 const USER = 'a001'
 
 /**
