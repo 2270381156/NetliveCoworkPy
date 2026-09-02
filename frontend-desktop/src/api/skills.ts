@@ -36,6 +36,10 @@ export interface SkillMarketTab {
 export interface RemoteCatalogItem {
   source: SkillSource
   id: string
+  /** 这条目录项在**当前页签作用域**下的确定性引用 ID（后端算好的不透明字符串）。
+   * 同一 source/id 在通用与专属市场是两条不同的引用（背后是不同服务器）——
+   * 已引用状态的配对必须用它，前端不得自己拼 `source:id` 猜身份。 */
+  reference_id: string
   name: string
   description: string | null
   /** 作者。netcowork 回 creatorName、自建那套回 updater，后端归一到这一个字段。 */
@@ -45,6 +49,10 @@ export interface RemoteCatalogItem {
   /** 下载量。**null 与 0 是两回事**：null = 这个市场没这项数据（不显示），0 = 确实没人下过。 */
   download_count?: number | null
 }
+
+/** 市场条目的引用身份：后端按页签作用域算好的确定性 reference_id。
+ * 目录卡片与已引用列表的配对一律经它；`source:id` 只可用于纯 UI 用途（请求去重键）。 */
+export const catalogReferenceId = (item: RemoteCatalogItem): string => item.reference_id
 
 export interface PullSkillResponse {
   skill_id: string
@@ -67,7 +75,7 @@ const coworksField = (coworks?: SkillCoworks | null) =>
 
 export const skillsApi = {
   list:         () => http.get<LocalSkill[]>('/skills'),
-  // 云端引用的 skill_id 形如 "source:remote_id"（含冒号），需编码。
+  // 云端引用的 skill_id 是不透明 reference_id（含冒号，需编码）。
   delete:       (skillId: string) => andSync(http.delete<void>(`/skills/${encodeURIComponent(skillId)}`)),
   // 导入时定归属：用户此刻正拿着这个 skill，最清楚它是通用的还是某个专业领域的。
   importLocal:  (file: File, coworks?: SkillCoworks) =>
