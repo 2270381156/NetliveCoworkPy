@@ -186,10 +186,10 @@ def _register_skills(providers, cfg, skills_dir: Path, fs_provider) -> None:
     from netlivecowork.providers.capability.skills.legacy import (
         SkillPullStore, migrate_pulled_to_references,
     )
-    from netlivecowork.providers.capability.skills.references.store import SkillReferenceStore
     from netlivecowork.providers.capability.skills.provider import (
         ReferencedSkillCapabilityProvider,
     )
+    from netlivecowork.api import deps
 
     # 1) 清崩溃残留的临时物化目录（<tmp>/imc-rt），随即把物化根标 Low（子目录继承）——
     #    这样云端 skill 每次物化不用再单独标，自动继承 Low（自动模式下 skill 能写 SKILL_DIR）。
@@ -230,7 +230,8 @@ def _register_skills(providers, cfg, skills_dir: Path, fs_provider) -> None:
 
     # 3) 迁移：已装的市场 skill → 引用（并删本地文件；用户自建的不动）。
     data_dir = paths.data_dir()
-    ref_store = SkillReferenceStore(data_dir)
+    # deps 的缓存门面：与 api 层共用同一实例（三处创建路径收敛，见 deps.get_skill_reference_store）。
+    ref_store = deps.get_skill_reference_store()
     try:
         n = migrate_pulled_to_references(SkillPullStore(data_dir), ref_store, skills_dir)
         if n:
@@ -254,6 +255,18 @@ def _register_skills(providers, cfg, skills_dir: Path, fs_provider) -> None:
             logger.info("Skills: pruned %d reference(s) with empty description", n)
     except Exception:
         logger.warning("Skills: prune null references failed", exc_info=True)
+
+    # 3d) profile 预置引用协调（共享来源；mythos 等按用户来源等登录后由 current-user 协调）。
+    #     必须在下面的引用 provider 注册**之前**：首个会话的能力清单才会包含预置 skill。
+    try:
+        result = reconcile_profile_skill_presets("")
+        if result.changed:
+            logger.info(
+                "Skills: profile presets reconciled (added %d, updated %d, removed %d)",
+                result.added, result.updated, result.removed,
+            )
+    except Exception:
+        logger.warning("Skills: profile preset reconcile failed", exc_info=True)
 
     # 4) 云端引用 provider —— 需要市场下载能力；市场未配置则跳过（引用仍在库里，
     #    但暂不可 materialize）。执行参数镜像本地 provider，保持行为一致。
@@ -492,6 +505,26 @@ def _cowork_local_skill_wrapper(inner):
         return None
 
 
+def reconcile_profile_skill_presets(username: str | None = None) -> "ReconcileResult":
+    """把已装 profile 的 skills.presets 协调进引用库 —— 启动 / recheck / 登录共用。
+
+    ``username=None`` → 用当前 W3 用户（recheck 路径：profile 集合刚变，连着把活跃
+    用户的按用户来源预置一起对一遍）；显式 ``""`` → 只协调共享来源（启动路径，那时
+    还没登录）。不访问网络；写入失败由协调器兜住（保持旧状态、changed=False）。
+    """
+    from netlivecowork import paths
+    from netlivecowork.api import deps
+    from netlivecowork.cowork import installed
+    from netlivecowork.providers.capability.skills import current_user
+    from netlivecowork.providers.capability.skills.references.presets import (
+        ReconcileResult,
+    )
+
+    active = current_user.get_current_username() if username is None else username
+    profiles = installed.list_all(paths.coworks_dir())
+    return deps.get_profile_skill_preset_reconciler().reconcile(profiles, username=active)
+
+
 async def apply_cowork_state() -> None:
     """已装套件集合变了之后，把**所有派生状态**刷新一遍。
 
@@ -539,6 +572,20 @@ async def apply_cowork_state() -> None:
         _register_suite_mcp_servers()
     except Exception:
         logger.warning("cowork：注册套件自带 MCP 失败", exc_info=True)
+
+    # ⑤ profile 预置的 skill 引用（安装/更新/收回后差量协调；用户名取当前 W3 用户）
+    try:
+        result = reconcile_profile_skill_presets()
+        if result.changed:
+            # 只有协调原子提交成功且确有变更，才作废 skill 执行索引。
+            from netlivecowork.api.skills import _mark_skill_index_dirty
+            _mark_skill_index_dirty()
+            logger.info(
+                "cowork：预置引用已协调（新增 %d，更新 %d，回收 %d）",
+                result.added, result.updated, result.removed,
+            )
+    except Exception:
+        logger.warning("cowork：协调 profile 预置引用失败", exc_info=True)
 
 
 def rebuild_cowork_llm_accounts() -> None:

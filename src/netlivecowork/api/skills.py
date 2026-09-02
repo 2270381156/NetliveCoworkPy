@@ -18,6 +18,7 @@ from netlivecowork.providers.capability.skills.adapters import MarketContext
 from netlivecowork.providers.capability.skills.adapters import registry as market_registry
 from netlivecowork.providers.capability.skills import current_user
 from netlivecowork.providers.capability.skills.errors import ERROR_STATUS, SkillError
+from netlivecowork.providers.capability.skills.references.presets import ReconcileResult
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +216,22 @@ def _parse_labels(raw: str) -> tuple[str, ...]:
 @router.post("/current-user", status_code=204)
 def set_current_user(body: CurrentUserRequest) -> None:
     current_user.set_current_username(body.username)
-    _mark_skill_index_dirty()   # 登录/切账号改变云端 skill 可见性 → 让索引重建
+    result = _reconcile_profile_skill_presets(body.username)
+    if result.changed:
+        _mark_skill_index_dirty()   # 登录/切账号改变可见性或带来预置引用 → 让索引重建
+
+
+def _reconcile_profile_skill_presets(username: str) -> ReconcileResult:
+    """登录/切账号后协调该用户的 profile 预置引用（按用户来源的预置要等 W3 用户名）。
+
+    best-effort：失败不影响登录本身（预置在下次启动/recheck 还会再协调）。
+    """
+    from netlivecowork.bootstrap.host_runtime import reconcile_profile_skill_presets
+    try:
+        return reconcile_profile_skill_presets(username)
+    except Exception:
+        logger.warning("skills：登录后协调 profile 预置引用失败", exc_info=True)
+        return ReconcileResult()
 
 
 # ── Remote marketplace (these MUST be registered before /{skill_id}) ──────────

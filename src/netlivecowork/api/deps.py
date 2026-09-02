@@ -16,6 +16,10 @@ from netlivecowork.config import get_settings
 from netlivecowork.providers.capability.skills.services.local import LocalSkillService
 from netlivecowork.providers.capability.skills.services.market import SkillMarketService
 from netlivecowork.providers.capability.skills.adapters import registry as market_registry
+from netlivecowork.providers.capability.skills.references.presets import (
+    ProfileSkillPresetReconciler,
+    resolve_profile_preset_scope,
+)
 from netlivecowork.providers.capability.skills.references.store import SkillReferenceStore
 from netlivecowork.providers.capability.skills.legacy import SkillPullStore
 
@@ -155,10 +159,28 @@ def get_skill_market_service() -> SkillMarketService:
     settings = get_settings()
     return SkillMarketService(
         adapters=market_registry.build_all(settings),
-        store=SkillReferenceStore(paths.data_dir()),
+        store=get_skill_reference_store(),
         download_retries=settings.skill_download_retries,
         download_retry_delay_sec=settings.skill_download_retry_delay_sec,
         # 某个 cowork 自带的市场：地址在它自己的套件里，**每次现造不缓存**——权限收回后
         # 套件会被删掉，缓存住等于让一个已经没权限的市场继续可访问。
         scoped_adapters=lambda cid: market_registry.build_for_cowork(cid, settings),
+        # 手工引用经协调器落库：清匹配的 opt-out、恢复为用户主动引用。
+        preset_reconciler=get_profile_skill_preset_reconciler(),
+    )
+
+
+@lru_cache
+def get_profile_skill_preset_reconciler() -> ProfileSkillPresetReconciler:
+    """profile 预置引用的协调器（启动 / recheck / W3 登录三个入口共用这一个）。
+
+    作用域解析走 ``resolve_profile_preset_scope``：纯数据、不造 adapter、不访问网络。
+    """
+    settings = get_settings()
+    return ProfileSkillPresetReconciler(
+        store=get_skill_reference_store(),
+        scope_resolver=lambda profile_id, source: resolve_profile_preset_scope(
+            profile_id, source, settings,
+        ),
+        per_user_sources=market_registry.per_user_sources,
     )

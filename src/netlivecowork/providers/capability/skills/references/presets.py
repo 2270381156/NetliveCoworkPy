@@ -99,11 +99,14 @@ class ProfileSkillPresetReconciler:
         self,
         store: SkillReferenceStore,
         scope_resolver: Callable[[str, str], str | None],
-        per_user_sources: set[str],
+        per_user_sources: set[str] | Callable[[], set[str]],
     ) -> None:
         self._store = store
         self._scope_resolver = scope_resolver
-        self._per_user_sources = set(per_user_sources)
+        # 允许传集合，也允许传函数（registry.per_user_sources 是静态表查询，随表更新）。
+        self._per_user_sources: set[str] = (
+            set(per_user_sources()) if callable(per_user_sources) else set(per_user_sources)
+        )
 
     # ── 协调 ────────────────────────────────────────────────────────────────────
 
