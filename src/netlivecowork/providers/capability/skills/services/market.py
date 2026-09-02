@@ -33,6 +33,7 @@ from ..adapters.scopes import GENERAL_SCOPE
 from ..errors import SkillError
 from ..runtime.materialize import materialized
 from ..references.store import (
+    ANY_LABEL,
     ANY_PRINCIPAL,
     ReferenceIdentity,
     SkillReference,
@@ -55,6 +56,7 @@ class SkillMarketService:
         download_retries: int = 2,
         download_retry_delay_sec: float = 1.0,
         scoped_adapters: Callable[[str], list[SkillMarketAdapter]] | None = None,
+        preset_reconciler: object | None = None,
     ) -> None:
         #: 按名字索引。名字来自 adapter 自己（``adapter.name``），也是引用记录里的 source。
         #: 这一组是**部署级**的（读 env），对应界面上的"通用"页签。
@@ -63,6 +65,8 @@ class SkillMarketService:
         #: 缓存住等于让一个已经没权限的市场继续可访问，而且没有任何现象提示它还在。
         self._scoped = scoped_adapters
         self._store = store
+        #: 手工引用经协调器落库（清 opt-out、恢复为用户主动引用）；没注入时退回裸 store。
+        self._presets = preset_reconciler
         self._download_retries = max(0, download_retries)
         self._download_retry_delay_sec = max(0.0, download_retry_delay_sec)
 
@@ -76,12 +80,19 @@ class SkillMarketService:
 
         指定的 cowork 没装 / 没配市场 → 空目录，不报错。权限收回时页签本来就消失了，
         再抛一次只是把"你没有这个权限"说成"系统故障"。
+
+        每条目录项带确定性的 ``reference_id``（当前页签作用域 + 来源 + 条目 id + 浏览者
+        主体）：``is_pulled`` 按**精确身份**匹配，同 source/id 的通用/专属市场条目互不串台。
         """
+        cid = (cowork or "").strip()
+        scope = cid or GENERAL_SCOPE
         ctx = MarketContext(username=username)
-        pulled = self._usable_identities(username, cowork)
+        pulled = self._usable_reference_ids(username, cid)
         merged: list[dict] = []
-        for name, adapter in self._adapters_for(cowork).items():
-            merged.extend(self._tag(self._fetch(adapter, ctx), name, pulled))
+        for name, adapter in self._adapters_for(cid or None).items():
+            merged.extend(
+                self._tag(self._fetch(adapter, ctx), name, pulled, scope, username, adapter)
+            )
         # 按时间降序；缺失时间排最后。各家的时间字段名不同，但归一后都叫 create_time。
         merged.sort(key=lambda it: it.get("create_time") or "", reverse=True)
         return merged
@@ -106,20 +117,17 @@ class SkillMarketService:
             logger.warning("%s 市场拉取异常，跳过这一家", adapter.name, exc_info=True)
             return []
 
-    def _usable_identities(self, username: str, cowork: str | None) -> set[tuple[str, str]]:
-        """这个页签下，哪些引用**真的能用**。用来算 `is_pulled`。
+    def _usable_reference_ids(self, username: str, cowork: str | None) -> set[str]:
+        """这个页签下，哪些引用**真的能用**（精确到 reference_id）。用来算 `is_pulled`。
 
-        按 ``(source, remote_id)`` 匹配（v3 之前的既有语义）；精确到 market_scope 与
-        principal 的匹配在作用域路由那一步切换，此处先保行为不变。
+        两道过滤与运行期 provider 相同：按登录用户（mythos 那类因人而异）、按 cowork
+        归属（只在 cowork 页签下过滤）。剩下的精确身份匹配交给 ``_tag``——作用域、
+        来源、条目 id、主体四个都对上才算"已引用"。
 
         ⚠ **不能只问"引用库里有没有这条 key"**（`is_referenced`）。那样算出来的
         `is_pulled` 会在**每一个** cowork 的页签上都是"已引用"，哪怕这条引用只归其中
         一个 cowork —— 于是市场页标着"已引用"，而那个 cowork 的会话里模型根本拿不到它。
         **界面说有、模型说没有**，这种不一致比少标一个难查得多（实测踩到）。
-
-        两道过滤，与运行期 provider 用的是同两道（见 provider._visible_refs）：
-          · 按登录用户 —— mythos 那类市场的 skill 因人而异
-          · 按 cowork 归属 —— 只在 cowork 页签下过滤
 
         **通用页签不按归属过滤**：它不是某个 cowork 的上下文，标"已引用"在那里的含义是
         "你已经引过这条了"（再引一次会把归属放宽成通用），不是"通用范围内能用"。
@@ -128,15 +136,33 @@ class SkillMarketService:
         cid = (cowork or "").strip()
         if cid:
             refs = self._store.list_owned({cid}, base=refs)
-        return {(r.source, r.remote_id) for r in refs}
+        return {r.key for r in refs}
 
-    def _tag(self, items: list[MarketItem], source: str, pulled: set[tuple[str, str]]) -> list[dict]:
-        """MarketItem → 接口要的 dict，补上 source 与 is_pulled。
+    def _tag(
+        self,
+        items: list[MarketItem],
+        source: str,
+        pulled: set[str],
+        scope: str,
+        username: str,
+        adapter: SkillMarketAdapter,
+    ) -> list[dict]:
+        """MarketItem → 接口要的 dict，补上 source、确定性 reference_id 与 is_pulled。
 
         这是**唯一**知道 source 从哪来的地方：它是 adapter 的名字，不是各家自报的字段。
+        ``is_pulled`` 按**精确身份**（页签作用域 + source + 条目 id + 浏览者主体）匹配：
+        同一 source/id 的通用与专属市场条目互不串台，通配归属只扩大可见范围、
+        不改变"这条引用来自哪个市场"（设计：市场页"已引用"的精确语义）。
         """
-        return [
-            {
+        principal = (
+            (username or ANY_PRINCIPAL)
+            if adapter.visibility == VISIBILITY_PER_USER
+            else ANY_PRINCIPAL
+        )
+        out: list[dict] = []
+        for it in items:
+            reference_id = ReferenceIdentity(scope, source, str(it.id), principal).reference_id
+            out.append({
                 "id": it.id,
                 "name": it.name,
                 "description": it.description,
@@ -144,23 +170,26 @@ class SkillMarketService:
                 "download_count": it.download_count,
                 "create_time": it.create_time,
                 "source": source,
-                "is_pulled": (source, str(it.id)) in pulled,
-            }
-            for it in items
-        ]
+                "reference_id": reference_id,
+                "is_pulled": reference_id in pulled,
+            })
+        return out
 
     # ── Download 分发（pull 与运行时 materialize 共用）─────────────────────────────
 
     def download_zip(
-        self, source: str, remote_id: str, username: str, cowork: str | None = None
+        self, source: str, remote_id: str, username: str, market_scope: str | None = None
     ) -> bytes:
         """下载 skill zip（失败按指数退避重试，最多 download_retries 次）。
         总尝试次数 = download_retries + 1。
 
-        ``cowork`` 指明这条是从哪个页签来的——同一个 ``source``（比如 mythos）在通用页签
-        和某个 cowork 页签下指向的是**不同的服务器**，只按 source 找会下到另一家去。
+        ``market_scope`` 指明这条从哪个市场页签来（``general``/空 = 部署级那几家）——
+        同一个 ``source``（比如 mythos）在通用页签和某个 cowork 页签下指向的是**不同的
+        服务器**，只按 source 找会下到另一家去。引用保存的 ``identity.market_scope``
+        就是这里的路由凭据。
         """
-        adapter = self._require_adapter(source, cowork)
+        route = None if not market_scope or market_scope == GENERAL_SCOPE else market_scope
+        adapter = self._require_adapter(source, route)
         ctx = MarketContext(username=username)
         attempts = self._download_retries + 1
         for i in range(attempts):
@@ -212,8 +241,9 @@ class SkillMarketService:
         再弹一个"给谁用"的框，等于让人对着两处描述同一件事。
         """
         cid = (cowork or "").strip()
+        scope = cid or GENERAL_SCOPE
         adapter = self._require_adapter(source, cid or None)
-        zip_bytes = self.download_zip(source, remote_id, username, cid or None)
+        zip_bytes = self.download_zip(source, remote_id, username, market_scope=scope)
         # 下载一次，解压到临时目录抽取 Level 1 元数据，随后 materialized() 自动删。
         with materialized(zip_bytes, session_id="install") as work:
             try:
@@ -225,11 +255,10 @@ class SkillMarketService:
         # principal 只对"按人可见"的市场有意义。原先写死 `if source == MYTHOS`——现在问 adapter，
         # 加第三家按人分的市场时本文件不用改。
         per_user = adapter.visibility == VISIBILITY_PER_USER
-        # 作用域路由（按保存的 market_scope 下载）在下一步接入；这里先保持既有行为：
-        # 手工引用一律记 general 作用域，归属由页签决定。
+        # 作用域进身份：从哪个页签引的，就记哪个页签——运行时下载按它路由到同一台服务器。
         ref = SkillReference(
             identity=ReferenceIdentity(
-                GENERAL_SCOPE,
+                scope,
                 source,
                 str(remote_id),
                 (username or ANY_PRINCIPAL) if per_user else ANY_PRINCIPAL,
@@ -239,10 +268,15 @@ class SkillMarketService:
             triggers=list(meta.triggers or []),
             skill_version=getattr(meta, "version", None),
             referenced_at=_now_iso(),
-            manual_labels=(cid,) if cid else ("*",),
+            manual_labels=(cid,) if cid else (ANY_LABEL,),
         )
-        self._store.add_reference(ref)
-        return {"skill_id": ref.key, "name": name}
+        if self._presets is not None:
+            # 经协调器落库：清掉匹配的 opt-out（用户重新引用 = 明确要它回来）。
+            skill_id = self._presets.user_reference(ref, cid or None)
+        else:
+            self._store.add_reference(ref)
+            skill_id = ref.key
+        return {"skill_id": skill_id, "name": name}
 
     def unreference(self, source: str, remote_id: str) -> None:
         """删除一条引用（市场页"卸载"）。"""

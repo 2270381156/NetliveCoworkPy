@@ -41,7 +41,7 @@ class _FakeMarket:
         self._zips = zips or {}
         self._fail = fail
 
-    def download_zip(self, source, remote_id, username):
+    def download_zip(self, source, remote_id, username, market_scope=None):
         if self._fail:
             from netlivecowork.providers.capability.skills.errors import SkillError
             raise SkillError("MYTHOS_UNREACHABLE", "云端不可达")
@@ -512,3 +512,47 @@ def test_set_manual_labels_by_opaque_id(tmp_path):
     assert got is not None and got.manual_labels == ("mbb",)
     store.remove_by_id(ref.identity.reference_id)
     assert store.list_references() == []
+
+
+def test_provider_downloads_from_the_references_saved_scope(tmp_path):
+    """同 source/remote_id 在通用与专属市场各有一条：运行时下载必须按引用保存的
+    market_scope 路由——引的是哪家服务器就下哪台，不按 source 瞎找（否则同 ID
+    会下到另一家去，内容对不上号）。"""
+    from netlivecowork.providers.capability.skills.adapters.base import SkillMarketAdapter
+    from netlivecowork.providers.capability.skills.services.market import SkillMarketService
+
+    def _zip_with_body(body: str) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("SKILL.md", f"---\nname: duo\ndescription: d\n---\n# {body}\n")
+        return buf.getvalue()
+
+    class _ZippedMythos(SkillMarketAdapter):
+        name = "mythos"
+
+        def __init__(self, payload: bytes):
+            self.payload = payload
+
+        def list_catalog(self, ctx):
+            return []
+
+        def download_zip(self, remote_id, ctx):
+            return self.payload
+
+    store = SkillReferenceStore(tmp_path)
+    store.add_reference(SkillReference(
+        identity=ReferenceIdentity("ipmaster", "mythos", "1129", "alice"),
+        name="duo", description="d",
+    ))
+    svc = SkillMarketService(
+        adapters=[_ZippedMythos(_zip_with_body("from-general"))], store=store,
+        scoped_adapters=lambda cid: [_ZippedMythos(_zip_with_body("from-scoped"))],
+    )
+    p = ReferencedSkillCapabilityProvider(store, svc, current_username_fn=lambda: "alice")
+    ctx = ProviderContext(session_id="scope-route")
+
+    async def go():
+        d = await p.load_definition("duo", ctx)
+        assert d is not None and "from-scoped" in d.instructions
+
+    asyncio.run(go())

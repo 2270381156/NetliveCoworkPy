@@ -22,9 +22,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Callable, Iterable, Sequence
-
-from netlivecowork.cowork.manifest import Cowork, SkillPreset   # noqa: TC001 —— 仅类型/只读访问
+from typing import Callable, Iterable, Protocol, Sequence
 
 from ..adapters.scopes import GENERAL_SCOPE
 from .store import (
@@ -37,6 +35,28 @@ from .store import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class PresetSpec(Protocol):
+    """一条预置声明的形状（结构化鸭子类型）。
+
+    真实实现是 ``cowork.manifest.SkillPreset``，但本模块**不 import 它**——
+    依赖规则 D1：providers 不认识 cowork，装配层把解析好的对象喂进来。
+    """
+
+    source: str
+    remote_id: str
+    name: str
+    description: str
+    version: str
+    triggers: Sequence[str]
+
+
+class PresetProfile(Protocol):
+    """reconcile 入参里"一个已装 profile"的形状（同上，鸭子类型）。"""
+
+    id: str
+    skill_presets: Sequence[PresetSpec]
 
 
 @dataclass(frozen=True)
@@ -87,7 +107,7 @@ class ProfileSkillPresetReconciler:
 
     # ── 协调 ────────────────────────────────────────────────────────────────────
 
-    def reconcile(self, profiles: Sequence[Cowork], username: str = "") -> ReconcileResult:
+    def reconcile(self, profiles: Sequence[PresetProfile], username: str = "") -> ReconcileResult:
         """把期望绑定落到引用库。``username`` 为空表示尚未登录：只协调共享来源。
 
         写入失败（OSError）保持旧状态并返回未变更——启动不许因为这个死掉，
@@ -100,7 +120,7 @@ class ProfileSkillPresetReconciler:
             logger.warning("profile 预置协调提交失败，保持旧状态，下次协调重试", exc_info=True)
             return ReconcileResult()
 
-    def _resolve(self, profiles: Sequence[Cowork], username: str) -> list[ResolvedPreset]:
+    def _resolve(self, profiles: Sequence[PresetProfile], username: str) -> list[ResolvedPreset]:
         """解析期望绑定。**在打开事务之前完成**——解析失败只影响它自己那一条。"""
         out: list[ResolvedPreset] = []
         seen: set[tuple[str, str]] = set()
@@ -130,7 +150,7 @@ class ProfileSkillPresetReconciler:
                 ))
         return out
 
-    def _resolve_scope(self, profile_id: str, preset: SkillPreset) -> str | None:
+    def _resolve_scope(self, profile_id: str, preset: PresetSpec) -> str | None:
         try:
             scope = self._scope_resolver(profile_id, preset.source)
         except Exception:

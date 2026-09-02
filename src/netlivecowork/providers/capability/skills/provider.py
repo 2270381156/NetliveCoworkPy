@@ -184,7 +184,11 @@ class ReferencedSkillCapabilityProvider(SkillCapabilityProvider):
         base = temp_root() / session_id
 
         def _prepare() -> Path:
-            zip_bytes = self._market.download_zip(ref.source, ref.remote_id, username)
+            # market_scope 是路由凭据：这条引用从哪个市场页签来，就去那台服务器下载。
+            zip_bytes = self._market.download_zip(
+                ref.source, ref.remote_id, username,
+                market_scope=ref.identity.market_scope,
+            )
             base.mkdir(parents=True, exist_ok=True)
             work = Path(tempfile.mkdtemp(dir=base))
             extract_zip(zip_bytes, work / "d")   # 中性单子目录，避免路径含 "skill"

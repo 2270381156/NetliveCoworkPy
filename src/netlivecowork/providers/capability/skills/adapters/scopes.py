@@ -24,7 +24,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,9 @@ class MarketScope:
     label: str
     cowork_url: str = ""
     mythos_url: str = ""
+    #: 地址相同而被**合并进**这个页签的 profile id（含页签自己的 id）。
+    #: 预置作用域解析靠它把"被合并的 profile"映射到保留页签，而不是一律退回 general。
+    profile_ids: tuple[str, ...] = ()
 
     @property
     def has_source(self) -> bool:
@@ -60,7 +63,8 @@ def build_scopes(
         per_cowork: 每个已装 cowork 的 (id, cowork 源, mythos 源)。
 
     **地址相同的合并成一个页签**（需求 H2）：否则用户看到两个一模一样的。
-    合并时保留通用页签那一个 —— 它是固定存在的那个。
+    合并时保留通用页签那一个 —— 它是固定存在的那个；被合并的 cowork id 记进
+    保留页签的 ``profile_ids``，预置作用域解析据此把它的预置算到这个页签头上。
     """
     general = MarketScope(
         id=GENERAL_SCOPE,
@@ -69,7 +73,7 @@ def build_scopes(
         mythos_url=(general_mythos_url or "").strip(),
     )
     out = [general]
-    seen = {(general.cowork_url, general.mythos_url)}
+    seen: dict[tuple[str, str], int] = {(general.cowork_url, general.mythos_url): 0}
 
     for cid, cowork_url, mythos_url in per_cowork:
         key = ((cowork_url or "").strip(), (mythos_url or "").strip())
@@ -77,10 +81,16 @@ def build_scopes(
             # 两个源都没配的 cowork 只用通用市场，**不该多出一个空页签**（需求 H3）。
             continue
         if key in seen:
+            retained = out[seen[key]]
+            out[seen[key]] = replace(
+                retained, profile_ids=retained.profile_ids + (cid,),
+            )
             logger.info("skills：cowork %r 的市场地址与已有页签相同，合并", cid)
             continue
-        seen.add(key)
-        out.append(MarketScope(id=cid, label=cid, cowork_url=key[0], mythos_url=key[1]))
+        seen[key] = len(out)
+        out.append(MarketScope(
+            id=cid, label=cid, cowork_url=key[0], mythos_url=key[1], profile_ids=(cid,),
+        ))
 
     return out
 
