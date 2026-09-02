@@ -991,12 +991,17 @@ async def session_consumer(entry: SessionEntry, runtime: Any, token: int,
     try:
         logger.info("session_consumer[%s] 开始消费事件流 (token=%d, status=%s)",
                     entry.session_id, token, entry.status)
+        # 只在**状态变化**时打一行（带累计事件数），不再逐条事件刷屏。
+        # 卡住定位仍够用：连"开始消费"都没有=consumer 没起来；有"开始"但状态一直不变、
+        # 事件也不涨=卡在引擎没发事件；状态按 RUNNING→PAUSED→结束 正常流转=在跑。
         _ev_n = 0
+        _last_status = entry.status
         async for ev in feed:
             _ev_n += 1
-            _et = ev.get("type") if isinstance(ev, dict) else type(ev).__name__
-            logger.info("session_consumer[%s] 事件#%d type=%s status=%s",
-                        entry.session_id, _ev_n, _et, entry.status)
+            if entry.status != _last_status:
+                logger.info("session_consumer[%s] 状态 %s → %s（累计 %d 条事件）",
+                            entry.session_id, _last_status, entry.status, _ev_n)
+                _last_status = entry.status
             if entry._consumer_token != token:
                 break
             await entry.append_event(ev)
