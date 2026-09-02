@@ -421,46 +421,39 @@ test('legacy W3 auth.bin (no epoch, no JWT) → getTokenUsageContext returns nul
   assert.strictEqual(reloaded.token_usage_epoch.id, 'w3-upgrade');
 });
 
-test('getSessionW3: whitelist NEEDS_PASSWORD → pass through', async () => {
+test('getSessionW3: valid local W3 session restores without consulting cloud', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ipmc-auth-w3-'));
   const user = { id: '00485973', username: '00485973', role: 'user' };
   saveSession(dir, w3SessionWithFreshTokenUsageEpoch('00485973', user));
 
+  // 设备级永久访问：本地会话有效即放行，恢复不回云端做任何访问校验。
+  // 无 pythonBackendUrl → 也不续 JWT，故 fetchImpl 一次都不该被调到。
+  let cloudCalled = false;
   const u = await getSessionW3({
-    cloudBaseUrl: 'https://cloud.example',
     appDataDir: dir,
-    fetchImpl: async () => ({ json: async () => ({ status: 'NEEDS_PASSWORD' }) }),
+    fetchImpl: async () => { cloudCalled = true; return { json: async () => ({}) }; },
   });
   assert.deepStrictEqual(u, user);
   assert.notStrictEqual(loadSession(dir), null);
+  assert.strictEqual(cloudCalled, false);
 });
 
-test('getSessionW3: NOT_ALLOWED → clear session and require re-login', async () => {
+test('getSessionW3: session retained even if cloud would reject the user (device-level permanence)', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ipmc-auth-w3-'));
   const user = { id: '00485973', username: '00485973', role: 'user' };
   saveSession(dir, w3SessionWithFreshTokenUsageEpoch('00485973', user));
 
+  // 用户可能已被移出云端白名单（旧行为会 NOT_ALLOWED → 清会话登出）。新模型：一旦授权过
+  // 就永久保留桌面访问权，恢复期不再回云端重校。用一个"被调到就抛"的 fetchImpl 佐证：
+  // 确实没有为「能不能进」去问云端；会话与用户都保留。
+  let cloudProbed = false;
   const u = await getSessionW3({
-    cloudBaseUrl: 'https://cloud.example',
     appDataDir: dir,
-    fetchImpl: async () => ({ json: async () => ({ status: 'NOT_ALLOWED' }) }),
-  });
-  assert.strictEqual(u, null);
-  assert.strictEqual(loadSession(dir), null);
-});
-
-test('getSessionW3: cloud unreachable → fall back to local session', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ipmc-auth-w3-'));
-  const user = { id: '00485973', username: '00485973', role: 'user' };
-  saveSession(dir, w3SessionWithFreshTokenUsageEpoch('00485973', user));
-
-  const u = await getSessionW3({
-    cloudBaseUrl: 'https://cloud.example',
-    appDataDir: dir,
-    fetchImpl: async () => { throw new Error('fetch failed'); },
+    fetchImpl: async () => { cloudProbed = true; throw new Error('cloud must not be consulted for access'); },
   });
   assert.deepStrictEqual(u, user);
   assert.notStrictEqual(loadSession(dir), null);
+  assert.strictEqual(cloudProbed, false);
 });
 
 test('getSessionW3: legacy OAuth session (no w3 flag) is not a valid W3 session', async () => {
@@ -483,13 +476,10 @@ test('getSessionW3: session without JWT is refreshed from Python backend on rest
   const validJwt = `header.${payload}.signature`;
 
   let refreshCalled = false;
-  const fetchImpl = async (url, opts) => {
-    if (url.includes('/w3/refresh-token')) {
-      refreshCalled = true;
-      return { ok: true, json: async () => ({ access_token: validJwt }) };
-    }
-    // precheck
-    return { json: async () => ({ status: 'NEEDS_PASSWORD' }) };
+  const fetchImpl = async (url) => {
+    assert.ok(url.includes('/w3/refresh-token')); // 恢复只打后端续 JWT，不再有 precheck
+    refreshCalled = true;
+    return { ok: true, json: async () => ({ access_token: validJwt }) };
   };
 
   const u = await getSessionW3({
@@ -513,8 +503,8 @@ test('getSessionW3: JWT refresh runs in background and does not block verified u
   let resolveRefresh;
   const refreshResponse = new Promise((resolve) => { resolveRefresh = resolve; });
   const fetchImpl = async (url) => {
-    if (url.includes('/w3/refresh-token')) return refreshResponse;
-    return { json: async () => ({ status: 'NEEDS_PASSWORD' }) };
+    assert.ok(url.includes('/w3/refresh-token'));
+    return refreshResponse;
   };
 
   const restored = await getSessionW3({
@@ -534,8 +524,8 @@ test('getSessionW3: refresh failure does not block session restore', async () =>
   saveSession(dir, { uid: 'w30040833', user, w3: true, token_usage_epoch: { id: 'e1', user_id: 'w30040833', not_before_ms: 100 } });
 
   const fetchImpl = async (url) => {
-    if (url.includes('/w3/refresh-token')) throw new Error('backend down');
-    return { json: async () => ({ status: 'NEEDS_PASSWORD' }) };
+    assert.ok(url.includes('/w3/refresh-token'));
+    throw new Error('backend down');
   };
 
   const u = await getSessionW3({

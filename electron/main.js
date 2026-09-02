@@ -1062,6 +1062,11 @@ function startBackend(bridgeInfo = null) {
         ? path.join(app.getPath('appData'), branding.legacyAppDataDir)
         : '',
       NLC_AGENTS_DIR: getUserAgentsDir(),
+      // substrate 地址下发给后端：w3_auth 的白名单预检与 JWT 发放/续期按
+      // CLOUD_JWT_MIGRATION 平移到 substrate。取值只走 getSubstrateBaseUrl()
+      // （env 优先、否则 app-config，见其说明）。空 = 该部署没有 substrate，
+      // 不注入 → 后端回退 netcowork 云端。
+      ...(getSubstrateBaseUrl() ? { NLC_SUBSTRATE_BASE_URL: getSubstrateBaseUrl() } : {}),
     },
     cwd: getAppDataDir(),
     windowsHide: true,
@@ -2174,15 +2179,34 @@ app.whenReady().then(async () => {
     }
   }
 
-  // W3 会话运行时补取 JWT：token-usage drain 发现无 JWT 时触发，
-  // 调 Python 后端 /w3/refresh-token 用 uid 补换 JWT，写回 auth.bin。
-  // 不阻塞当前 drain（返回 null → 跳过本轮），补到后下一轮 drain 正常上报。
+  // 解出 JWT 的 exp（HS256，payload 是第二段 base64url），判断是否临近到期。
+  // 解不出（格式怪 / 无 exp）一律当作"该换"——宁可多换一次，也别让它悄悄过期。
+  // 用户令牌 7 天，阈值取 1 天：临近到期就提前换，续期窗口足够宽。
+  function w3JwtExpiringSoon(token, thresholdSec = 24 * 3600) {
+    try {
+      const payload = String(token || '').split('.')[1];
+      if (!payload) return true;
+      const json = Buffer.from(
+        payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64'
+      ).toString('utf8');
+      const exp = JSON.parse(json).exp;
+      if (typeof exp !== 'number') return true;
+      return (exp * 1000 - Date.now()) < thresholdSec * 1000;
+    } catch { return true; }
+  }
+
+  // W3 用户令牌的发放/续期收到 substrate 后，主进程主动驱动续期（方案 §4.2）：
+  // 每轮 token-usage drain 调一次，用存的 uid 打 Python 后端 /w3/refresh-token
+  // （后端已按 CLOUD_JWT_MIGRATION 指向 substrate），拿字节兼容的新 JWT 写回 auth.bin。
+  // 触发条件：无 JWT（补取）或 JWT 剩不足 1 天（主动续）。用户令牌 7 天，drain 是
+  // 小时级节奏，续期窗口绰绰有余。不阻塞当前 drain：换到后下一轮正常上报。
   let w3RefreshInFlight = null;
   async function ensureW3JwtIfNeeded() {
     if (w3RefreshInFlight) return w3RefreshInFlight;
     const s = authFlow.loadSession(getAppDataDir());
     if (!s || !s.uid || s.w3 !== true) return;
-    if (s.access_token) return;
+    if (s.access_token && !w3JwtExpiringSoon(s.access_token)) return;
+    const renewing = !!s.access_token;   // 有旧令牌 = 续期；没有 = 补取
     w3RefreshInFlight = (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/w3/refresh-token`, {
@@ -2195,11 +2219,11 @@ app.whenReady().then(async () => {
           if (data && data.access_token) {
             s.access_token = data.access_token;
             authFlow.saveSession(getAppDataDir(), s);
-            elog(`W3 运行时补取 JWT 成功 (len=${s.access_token.length})`);
+            elog(`W3 ${renewing ? '主动续期' : '运行时补取'} JWT 成功 (len=${s.access_token.length})`);
           }
         }
       } catch (e) {
-        elog(`W3 运行时补取 JWT 失败 — ${(e && e.message) || e}`);
+        elog(`W3 ${renewing ? '主动续期' : '运行时补取'} JWT 失败 — ${(e && e.message) || e}`);
       } finally {
         w3RefreshInFlight = null;
       }
@@ -2211,7 +2235,9 @@ app.whenReady().then(async () => {
     getContext: () => {
       if (!tokenUsageAuthReady) return null;
       const ctx = authFlow.getTokenUsageContext(getAppDataDir());
-      if (!ctx) ensureW3JwtIfNeeded();
+      // 每轮都查一次：缺 JWT 则补取、临近到期则主动续（见 ensureW3JwtIfNeeded）。
+      // 内部有 in-flight 去重与"离到期还早就直接返回"的短路，调用开销可忽略。
+      ensureW3JwtIfNeeded();
       return ctx;
     },
     getCloudBaseUrl,
