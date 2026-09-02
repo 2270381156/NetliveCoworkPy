@@ -5,6 +5,7 @@ Endpoints
 POST   /sessions                   create + start session
 GET    /sessions                   list all sessions
 GET    /sessions/{id}              get session
+PUT    /sessions/{id}/title        set a persistent manual title
 DELETE /sessions/{id}              delete session record
 GET    /sessions/{id}/tasks        list tasks
 POST   /sessions/{id}/messages     send message (HITL response or new run)
@@ -35,6 +36,7 @@ from netlivecowork.api.schemas.sessions import (
     CreateSessionRequest,
     ResumeSessionRequest,
     SendMessageRequest,
+    SessionTitleRequest,
     route_hitl_reply,
 )
 from netlivecowork.api.hitl_service import _ensure_workspace_registered  # noqa: F401  (本模块 3 处调用 + 既有测试 monkeypatch 目标)
@@ -409,6 +411,24 @@ async def get_session(session_id: str) -> dict:
     entry = _sm._sessions.get(session_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    return entry.to_dict()
+
+
+@router.put("/{session_id}/title", response_model=dict)
+async def update_session_title(session_id: str, req: SessionTitleRequest) -> dict:
+    """设置用户手动标题；不改 AI 自动维护的 goal。"""
+    entry = _sm._sessions.get(session_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    title = req.title.strip()
+    if not title or len(title) > 200:
+        raise HTTPException(status_code=422, detail="title must contain 1-200 characters")
+    if _sm._state_store is None:
+        raise HTTPException(status_code=503, detail="persistence not ready")
+    saved = await _sm._state_store.save_session_title(session_id, title)
+    if saved is False:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    entry.title = title
     return entry.to_dict()
 
 

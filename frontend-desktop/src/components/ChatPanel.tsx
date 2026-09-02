@@ -52,6 +52,7 @@ import { WorkModeButton } from '@/components/ui/WorkModeButton'
 import { LLMErrorModal } from '@/components/LLMErrorModal'
 import { SessionNoticeBar } from './SessionNoticeBar'
 import { ReportSessionButton } from '@/components/ReportSessionButton'
+import { EditableSessionTitle } from '@/components/EditableSessionTitle'
 import { WebSources } from '@/components/WebSources'
 import { activityLabel, formatDuration } from '@/lib/activity'
 import type { ActivityState } from '@/lib/activity'
@@ -1545,9 +1546,12 @@ export function ChatPanel({ sessionId, sse, pendingSession, user, onSessionCreat
       {session && (
         <div className="flex items-center justify-between px-4 py-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <p className="truncate text-sm font-medium" style={{ color: 'var(--t1)' }}>
-              {session.goal || session.user_prompt || session.id.slice(0, 8)}
-            </p>
+            <EditableSessionTitle
+              session={session}
+              mode="inline"
+              className="text-sm font-medium"
+              style={{ color: 'var(--t1)' }}
+            />
             {isCloudSession(session.id) && <CloudBadge />}
           </div>
           <div className="ml-3 flex flex-shrink-0 items-center gap-1">

@@ -31,6 +31,8 @@ export const sessionsApi = {
     return results.flat()
   },
   get:       (id: string) => httpFor(id).get<Session>(`/sessions/${id}`),
+  renameTitle: (id: string, title: string) =>
+    httpFor(id).put<Session>(`/sessions/${id}/title`, { title }),
   /** 建在哪个后端由调用方指定（新建会话对话框里的「运行位置」）；建成即登记归属。 */
   create: async (data: CreateSessionRequest, backend: BackendId = 'local'): Promise<Session> => {
     const s = await createHttp(getBackend(backend).base).post<Session>('/sessions', data)

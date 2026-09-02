@@ -16,6 +16,8 @@ export interface AuthUser {
 export interface Session {
   id: string
   user_prompt: string
+  /** 用户手动标题；有值时永久优先于 AI 自动维护的 goal。 */
+  title?: string
   goal: string
   status: SessionStatus
   template_id: string | null

@@ -7,6 +7,7 @@
   - delete_session      （DELETE /sessions/{id} 端点需要）
   - append_sse_event    （SSE 历史持久化）
   - update_session_status （recovery 标记 INTERRUPTED 用）
+  - save_session_title  （用户手动命名会话）
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ class SessionRecord:
     llm_model: str | None
     token_budget: int
     failure_counter: int
+    title: str = ""
     config: dict = field(default_factory=dict)
     workspace: str | None = None  # agent 工作目录（绝对路径）；host 自有列
     created_at: datetime | None = None
@@ -136,13 +138,24 @@ class PostgresStateStore:
             row = await db.get(SessionModel, session_id)
             return row.workspace if row is not None else None
 
+    async def save_session_title(self, session_id: str, title: str) -> bool:
+        """持久化用户手动标题；返回会话行是否存在。"""
+        async with self._factory() as db:
+            async with db.begin():
+                result = await db.execute(
+                    sql_update(SessionModel)
+                    .where(SessionModel.id == session_id)
+                    .values(title=title)
+                )
+                return bool(result.rowcount)
+
     async def get_session_status(self, session_id: str) -> str | None:
         """读回某 session 的持久状态（recover 据此跳过 PAUSED_HITL；spec/07 §9）。"""
         async with self._factory() as db:
             row = await db.get(SessionModel, session_id)
             return row.status if row is not None else None
 
-    # ── Mutation (limited — recovery + delete only) ───────────────────────────
+    # ── Mutation (limited — host-owned metadata + recovery + delete) ─────────
 
     async def update_session_status(self, session_id: str, status: str) -> None:
         """Used by recovery to mark sessions INTERRUPTED."""
@@ -196,6 +209,7 @@ def _row_to_record(row: SessionModel) -> SessionRecord:
         tenant_id=row.tenant_id,
         user_prompt=row.user_prompt,
         status=row.status,
+        title=row.title or "",
         goal=row.goal or "",
         root_agent_id=row.root_agent_id,
         llm_provider=row.llm_provider,
