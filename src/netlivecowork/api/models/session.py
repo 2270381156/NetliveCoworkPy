@@ -617,6 +617,11 @@ class SessionEntry:
                 self.updated_at = _now()
                 # 仅 INTERRUPTED 记成因;离开中断态(如 resume→RUNNING)清空,避免旧成因泄漏。
                 self.interrupt_reason = p.get("reason") if new_status == "INTERRUPTED" else None
+                # 终态即刻收口本轮 SSE 流：done 不再等后台整理(gather)与归属权检查——
+                # 两者卡死(如 LLM 无超时挂死)或被新一轮顶替时，本轮流仍能正常关闭
+                # (done 由 SSE 生成器出口合成，final_status 取上方刚更新的 self.status)。
+                if new_status in ("SUCCEEDED", "FAILED", "CANCELED"):
+                    self.sse_finished = True
                 update = self._session_update_json(new_status)
                 # ── session_notice 合成 ──
                 # FAILED 素材优先级：熔断（已在 FAILURE_THRESHOLD_HIT 处合成，跳过）
