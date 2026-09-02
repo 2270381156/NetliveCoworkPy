@@ -102,7 +102,8 @@
 - **去重**：按 `(用户, itemId)` —— 见过的 `itemId` 直接跳过、不再累加；没见过才落库。去重表与计量行解耦，去重窗口**天级**（覆盖离线攒着、隔很久才重发）。
 - **不改累加语义**：同一 turn 里 `sessionId` 相同但 `itemId` 不同的多条，照常**各自累加**（actor + observe 分别计入）；去重只挡"同一条被重发"。
 - **按 agent 呈现**：云端 DTO 增加 `cowork` 字段、表增列、统计接口按 `cowork` 加聚合维度（地端已在发 `cowork`，未声明时被 `@JsonIgnoreProperties(ignoreUnknown=true)` 安全忽略）。
-- **换工号连续性**：substrate 按 JWT(`sub`=uid) 归属；`user_token_usage` 在 surrogate re-key（阶段1）后挂到 `surrogate_id`，使换工号后同一人的用量连续（见 netcowork `doc/IDENTITY_SURROGATE_ANCHOR.md`）。
+- **用户身份取自 JWT 的 `username` claim（= 工号 / W3 uid），不是 `sub`。** `sub` 是 substrate 自铸的 **surrogate_id（UUID）**，不是工号——接收侧按 username(工号) 归属/呈现，切勿把 `sub` 当稳定工号用。
+- **换工号连续性**：substrate 内部把工号解析到永久的 `surrogate_id`，`user_token_usage` 在 re-key（阶段1）后挂到 `surrogate_id`，使换工号后同一人的用量连续（见 netcowork `doc/IDENTITY_SURROGATE_ANCHOR.md`）。
 
 **可聚合维度**：用户（JWT）× agent（`cowork`）× 模型（`llmModel`）× 账号（`llmAccount`）× 时间；指标 = `inputTokens` / `outputTokens` 求和、调用次数计数。
 
