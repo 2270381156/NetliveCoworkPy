@@ -927,10 +927,61 @@ class SessionEntry:
 # ── Event consumer ────────────────────────────────────────────────────────────
 
 
-async def session_consumer(entry: SessionEntry, runtime: Any, token: int) -> None:
-    from ctx_weft.core.events.types import EventFilter
+class EventFeed:
+    """一条**已经订阅上**的事件流。
+
+    存在的理由只有一个：`event_bus.stream()` 是异步生成器，真正登记订阅要等
+    `async for` 跑起来那一刻。而 run 在 `start_session` 返回之前就已经开跑了，
+    中间还隔着写库、拍工作区快照这些 await（快照要拷整个工作区，几秒很正常）。
+    这段时间里发出的事件**没有任何订阅者，而总线不回放** —— 永久丢失。
+
+    表现：新建会话的第一轮，界面上只留下半截（比如一个控制工具调用），回复不见了；
+    而事件表里一切完整，重启也补不回来 —— history 读的是持久化的帧日志，
+    不是从事件重放。
+
+    `bus.subscribe()` 是**同步**的：函数返回时订阅已在册。所以在 `start_session`
+    之前 `open()` 一次，那个窗口就彻底不存在了。
+
+    handler 里只做一次 `put_nowait`（它是在 emit 里同步调的，不能干重活）；
+    写库那些留在消费者自己的 task 里。队列不设上限：丢事件正是要修的问题本身。
+    """
+
+    def __init__(self, bus: Any, session_id: str) -> None:
+        self._bus = bus
+        self._session_id = session_id
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self._handle = bus.subscribe(None, self._push)   # 同步登记，返回即已订阅
+
+    async def _push(self, ev: Any) -> None:
+        if getattr(ev, "session_id", None) == self._session_id:
+            self._queue.put_nowait(ev)
+
+    async def __aiter__(self):
+        while True:
+            yield await self._queue.get()
+
+    async def close(self) -> None:
+        try:
+            await self._handle.unsubscribe()
+        except Exception:
+            logger.exception("EventFeed unsubscribe failed for %s", self._session_id)
+
+
+def open_event_feed(runtime: Any, session_id: str) -> "EventFeed | None":
+    """在 run 开跑**之前**把订阅挂上。失败返回 None —— 消费者会自己再开一条。"""
     try:
-        async for ev in runtime.event_bus.stream(EventFilter(session_id=entry.session_id)):
+        return EventFeed(runtime.event_bus, session_id)
+    except Exception:
+        logger.exception("open_event_feed failed for %s", session_id)
+        return None
+
+
+async def session_consumer(entry: SessionEntry, runtime: Any, token: int,
+                           feed: "EventFeed | None" = None) -> None:
+    if feed is None:
+        feed = EventFeed(runtime.event_bus, entry.session_id)
+    try:
+        async for ev in feed:
             if entry._consumer_token != token:
                 break
             await entry.append_event(ev)
@@ -942,6 +993,8 @@ async def session_consumer(entry: SessionEntry, runtime: Any, token: int) -> Non
             if entry.status == "RUNNING":
                 entry.status = "FAILED"
             entry.cond.notify_all()
+    finally:
+        await feed.close()
 
 
 # ── SSE generator ─────────────────────────────────────────────────────────────

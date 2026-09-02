@@ -103,8 +103,21 @@ class CoworkScopedMCPProvider(ToolCapabilityProvider):
             return []
         return await self._inner.list(ctx)
 
-    async def invoke(self, capability_id: str, arguments: dict, ctx: ProviderContext):
-        """**能力 id 可猜，看不见不等于拿不到。** 漏了它，边界只是体验不是权限。"""
+    def invoke(self, capability_id: str, arguments: dict, ctx: ProviderContext):
+        """**能力 id 可猜，看不见不等于拿不到。** 漏了它，边界只是体验不是权限。
+
+        ⚠ **必须是普通 `def`，不能是 `async def`。**
+
+        协议里 `invoke` 返回的是 `AsyncIterator`，调用方直接 `async for` 它的返回值
+        （见 ctx_weft/protocols/capability.py）。写成 `async def` 的话返回的是 coroutine，
+        内核那一句 `async for` 立刻炸：
+
+            'async for' requires an object with __aiter__ method, got coroutine
+
+        而且**每一个走这个包装器的 MCP 都会炸**——现象是"工具在清单里，一调就报错"。
+        它藏了很久：套件自带的 MCP 一直没注册成功，随包那些又各有各的毛病，
+        于是没人真的调通过一次。旁边 local_skill 那个包装器一直是普通 def，是对的。
+        """
         if not self._allowed(ctx):
             logger.info(
                 "cowork：拦下越权调用 —— 会话 %s 不拥有 MCP %r（能力 %s）",
@@ -113,7 +126,7 @@ class CoworkScopedMCPProvider(ToolCapabilityProvider):
             raise PermissionError(
                 f"当前 cowork 没有 {self._server_name} 这个能力"
             )
-        return await self._inner.invoke(capability_id, arguments, ctx)
+        return self._inner.invoke(capability_id, arguments, ctx)
 
     # ── 其余原样委托 ──────────────────────────────────────────────────────────
 

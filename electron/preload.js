@@ -31,6 +31,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 待处理数量 → 托盘悬停提示；0 时顺带停掉托盘闪动。
   setPending: (payload) => ipcRenderer.invoke('set-pending', payload),
   // 用户点了 toast → 主进程已激活窗口，这里通知渲染层跳到对应会话。
+  // 套件装好/收回了，界面该重取阵容。**主进程一直在发这个事件，但从来没人听** ——
+  // 表现是：全新安装打开后显示"没有任何 cowork 权限"，套件其实几秒后就装好了，
+  // 用户只能靠点"重试"才看得到。
+  onCoworksChanged: (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('coworks-changed', handler);
+    return () => ipcRenderer.removeListener('coworks-changed', handler);
+  },
   onNotificationClick: (cb) => {
     const handler = (_e, payload) => cb(payload);
     ipcRenderer.on('notification-click', handler);

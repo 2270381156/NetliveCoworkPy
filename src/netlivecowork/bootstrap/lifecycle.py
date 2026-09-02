@@ -221,10 +221,18 @@ async def _start_db(hr: HostRuntime, h: Handles):
 
 
 async def _sync_templates(hr: HostRuntime) -> None:
-    if hr.template_syncer is None or not hr.agents_dir.exists():
+    """启动时把套件的派生状态建起来。
+
+    **走的是 `/coworks/recheck` 同一个函数**（host_runtime.apply_cowork_state）——
+    模板索引、套件 LLM 账号、套件自带 MCP、阵容快照，这几样必须两条路一致。
+    以前启动一份、recheck 一份，各写各的，于是每加一样 recheck 就漏一样，
+    而漏掉的表现全是"装上了但用不了"。清单只留一份，这里不再自己列。
+    """
+    if hr.template_syncer is None:
         return
-    count = await hr.template_syncer.sync(hr.agents_dir)
-    logger.info("Templates: synced %d template(s) from %s", count, hr.agents_dir)
+    from netlivecowork.bootstrap.host_runtime import apply_cowork_state
+
+    await apply_cowork_state()
 
 
 def _start_watcher(hr: HostRuntime) -> Any:
@@ -234,6 +242,13 @@ def _start_watcher(hr: HostRuntime) -> Any:
     agents_dir: Path = hr.agents_dir
     skills_dir: Path = hr.skills_dir
 
+    # ⚠ 目录先建出来再判。全新安装时套件还没落地，这个目录不存在——
+    # 而 watch 只在启动这一刻注册一次，错过了就再也不会热更新，
+    # 表现是"装上了要重启才看得到"。
+    try:
+        agents_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     if hr.template_syncer is not None and agents_dir.exists():
         async def _on_agents_change() -> None:
             count = await hr.template_syncer.sync(agents_dir)

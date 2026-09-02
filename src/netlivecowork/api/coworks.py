@@ -129,7 +129,7 @@ class RecheckResponse(BaseModel):
 
 
 @router.post("/coworks/recheck", response_model=RecheckResponse)
-def recheck_coworks() -> RecheckResponse:
+async def recheck_coworks() -> RecheckResponse:
     """立刻对一次账。
 
     **给客户端主进程调**：它取完包摆进暂存目录之后调这里，让后端装下去。
@@ -143,12 +143,12 @@ def recheck_coworks() -> RecheckResponse:
     from netlivecowork.cowork.reconcile import reconcile
 
     result = reconcile(paths.cowork_staging_dir(), paths.coworks_dir())
-    cowork_runtime.reload()
-    # 阵容/归属/市场路由由 reload 重建；**账号得单独来一次** —— 它只在开机那条路上登记，
-    # 不重建的话收回之后那个账号还挂着，且带着可用的凭据（需求 F5）。
-    from netlivecowork.bootstrap.host_runtime import rebuild_cowork_llm_accounts
+    # 对账之后要刷新哪些派生状态，**清单只有一份**（host_runtime.apply_cowork_state），
+    # 启动那条路调的也是它。这里不许再自己列一遍——以前就是各列各的，
+    # 每往启动流程里加一样，这里就漏一样，而漏掉的表现全是"装上了但用不了"。
+    from netlivecowork.bootstrap.host_runtime import apply_cowork_state
 
-    rebuild_cowork_llm_accounts()
+    await apply_cowork_state()
     return RecheckResponse(
         installed=result.installed,
         skipped=result.skipped,

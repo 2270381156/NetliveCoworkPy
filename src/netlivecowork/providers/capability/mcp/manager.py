@@ -94,6 +94,25 @@ class MCPProviderManager:
         provider = self._create_and_register(config)
         return self._to_info(config, provider)
 
+    def register_transient(self, config: MCPServerConfig) -> bool:
+        """注册一个**不落盘**的 MCP server —— 给套件下发的那些用。
+
+        与 `register` 的区别只有一条：不写 mcp.json。套件下发的东西属于 cowork
+        不属于用户，套件被收回、重启之后就该消失；写进 mcp.json 的话它会一直留着，
+        而云端管理台里根本没有它，用户不知道去哪关掉。同 LLM 账号那边的 persist=False。
+
+        已经有同名的就不动（用户手工配的、或随包的优先）——返回 False 让调用方知道。
+        """
+        if config.name in self._active:
+            return False
+        try:
+            self._create_and_register(config)
+            logger.info("MCPProviderManager: 套件下发的 '%s' 已注册（不落盘）", config.name)
+            return True
+        except Exception:
+            logger.warning("MCPProviderManager: 套件下发的 '%s' 注册失败", config.name, exc_info=True)
+            return False
+
     def deregister(self, name: str) -> None:
         """注销 MCP server：从 registry 和 store 移除。provider 不立即 close。"""
         if name not in self._active:

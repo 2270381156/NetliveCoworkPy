@@ -457,12 +457,24 @@ def test_rebuilding_drops_the_old_suite_accounts_first():
     assert dropped == [ORIGIN_SUITE], "重建之前没先撤掉旧的套件账号"
 
 
-def test_recheck_rebuilds_the_accounts():
-    """对账路径必须真的调了重建 —— 删掉那行，上面两条照样绿，而收回后账号会留着。"""
-    import inspect
-    from netlivecowork.api import coworks as coworks_api
+@pytest.mark.asyncio
+async def test_recheck_rebuilds_the_accounts(monkeypatch):
+    """对账路径必须真的重建账号 —— 漏了的话，收回一个 cowork 之后它下发的账号还挂着，
+    而且凭据可用。
 
-    src = inspect.getsource(coworks_api.recheck_coworks)
-    assert "rebuild_cowork_llm_accounts" in src, (
+    **钉行为，不钉源码文本。** 这条原先断言 `recheck_coworks` 的源码里出现
+    "rebuild_cowork_llm_accounts"——那把测试焊在了"这一步写在哪个函数里"上。
+    刷新清单收敛进 apply_cowork_state 之后它就红了，而功能完全正常。
+    现在改成：跑一遍对账路径该调的那个函数，看重建有没有真的发生。
+    """
+    from netlivecowork.bootstrap import host_runtime
+
+    called = []
+    monkeypatch.setattr(host_runtime, "rebuild_cowork_llm_accounts",
+                        lambda: called.append("llm"))
+    monkeypatch.setattr(host_runtime, "_register_suite_mcp_servers", lambda: None)
+    await host_runtime.apply_cowork_state()
+
+    assert called == ["llm"], (
         "对账后没重建 LLM 账号：收回一个 cowork 之后，它下发的账号还挂着且凭据可用"
     )

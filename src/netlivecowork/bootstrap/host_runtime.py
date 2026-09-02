@@ -334,6 +334,10 @@ def _register_mcp(runtime):
     manager = MCPProviderManager(MCPServerStore(), runtime.providers, wrap=_cowork_mcp_wrapper())
     manager.load_from_store()
     deps.set_mcp_manager(manager)
+    # 套件自带的 MCP **不在这里注册** —— 它和模板、LLM 账号一样是"套件的派生状态"，
+    # 统一由 apply_cowork_state() 在 lifecycle 里做（那时管理器已经建好）。
+    # 曾经放进 _setup_cowork()，那个函数跑在装配最前面、管理器还不存在，
+    # 一调就是 RuntimeError: MCPProviderManager not initialized，被 catch 吞成一行 warning。
     return manager
 
 
@@ -439,6 +443,8 @@ def _setup_cowork() -> None:
     except Exception:
         logger.warning("cowork：策略装配失败，本次不做能力隔离", exc_info=True)
 
+    # 套件自带的 MCP 定义（清单 mcp.define）。
+    #
     # cowork 自带的技能市场。**只在这一处接** —— 市场层自己不认识 cowork（架构设计 §7）：
     # 那几个地址写在套件里（cowork.json 的 skills.*），属于权限，不属于部署配置。
     try:
@@ -470,7 +476,10 @@ def _cowork_local_skill_wrapper(inner):
             LocalSkillOwners,
         )
 
-        owners = LocalSkillOwners(paths.data_dir())
+        # 归属库自己认两个 key（目录名 / SKILL.md 里的 name），见 LocalSkillOwners。
+        # **不要在这里做反查** —— 曾经写成查不到就去 api.deps 拉服务全量扫一遍目录：
+        # 方向反了（装配层反够 api），而且那是能力清单的热路径，每轮对话都要问。
+        owners = LocalSkillOwners(paths.data_dir(), skills_dir=paths.skills_dir())
         return CoworkScopedLocalSkillProvider(
             inner,
             owned_labels_fn=_cowork_owned_labels,
@@ -481,6 +490,55 @@ def _cowork_local_skill_wrapper(inner):
     except Exception:
         logger.warning("cowork：本地 skill 归属隔离装配失败，本次不隔离", exc_info=True)
         return None
+
+
+async def apply_cowork_state() -> None:
+    """已装套件集合变了之后，把**所有派生状态**刷新一遍。
+
+    ## 这个函数存在的唯一理由
+
+    这些状态原先各刷各的：启动时在装配链上按顺序建，运行期由 `/coworks/recheck`
+    再列一遍。**两份清单必须一致，而它们各写各的** —— 于是每往启动流程里加一样
+    派生状态，recheck 就漏一样，而漏掉的表现全都是"装上了但用不了"：
+
+        模板索引没重扫  → 界面上有这个智能体，新建会话 500（TemplateNotFoundError）
+        套件 MCP 没注册 → 套件里 use + define 都写着，agent 说自己没有这个工具
+        LLM 账号没重建 → 套件收回了，它下发的账号还挂着，且带着可用的凭据
+
+    三个都实际发生过，都是一个一个补上去的。所以清单**只留这一份**，
+    两条路都调它；tests/test_cowork_state_single_source.py 会挡住"又在别处列一遍"。
+
+    失败不抛：对账本身已经成功，派生状态刷新失败只该降级，不该让整个请求 500。
+    """
+    from netlivecowork.cowork import runtime as cowork_runtime
+
+    # ① 阵容 / 归属 / 能力策略 / 市场路由
+    try:
+        cowork_runtime.reload()
+    except Exception:
+        logger.warning("cowork：重读阵容失败", exc_info=True)
+
+    # ② 套件下发的 LLM 账号
+    try:
+        rebuild_cowork_llm_accounts()
+    except Exception:
+        logger.warning("cowork：重建套件 LLM 账号失败", exc_info=True)
+
+    # ③ 模板索引（会话按 template_id 找它）
+    try:
+        from netlivecowork import paths
+        from netlivecowork.api import deps
+
+        n = await deps.get_template_syncer().sync(paths.coworks_dir())
+        logger.info("cowork：重扫模板 %d 个", n)
+    except Exception:
+        logger.warning("cowork：重扫模板失败", exc_info=True)
+
+    # ④ 套件自带的 MCP
+    try:
+        _register_suite_mcp_servers()
+    except Exception:
+        logger.warning("cowork：注册套件自带 MCP 失败", exc_info=True)
 
 
 def rebuild_cowork_llm_accounts() -> None:
@@ -710,3 +768,35 @@ def _wire_authorizers(runtime, providers, agent_provider, fs_provider) -> None:
     )
     providers.set_capability_authorizer(FsTool.WRITE_FILE, write_authz)
     providers.set_capability_authorizer(f"{FS_PROVIDER_NAME}:edit_file", write_authz)
+
+
+
+def _register_suite_mcp_servers() -> None:
+    """把已装套件 `mcp.define` 里的 server 注册进 MCP 管理器（不落盘）。
+
+    同名冲突时**不覆盖**：用户手工配的和随包的优先。两个套件定义同一个名字时先到先得，
+    并打日志——那是套件打包的问题，应该让运维看见，而不是在这里悄悄选一个。
+    """
+    from netlivecowork import paths
+    from netlivecowork.api import deps
+    from netlivecowork.cowork import installed
+    # ⚠ 复用 store 的那个转换器，**别自己再拼一遍 config**。
+    # 套件里 define 的那份就是 mcp.json 条目的原样形状（见 MCPServerDef 的说明），
+    # 而"有 url 就是 http、有 command 就是 stdio"这条推断只写在那里。自己拼的话
+    # transport 会落到默认的 stdio，带着 url 走 stdio —— 连不上，且报错指不到这里。
+    from netlivecowork.providers.capability.mcp.store import _entry_to_config
+
+    manager = deps.get_mcp_manager()
+    if manager is None:
+        return
+    n = 0
+    for cowork in installed.list_all(paths.coworks_dir()):
+        for d in cowork.mcp_define:
+            cfg = _entry_to_config(d.name, dict(d.config))
+            if cfg is None:
+                logger.warning("cowork：套件 %s 的 MCP %r 定义有问题，跳过", cowork.id, d.name)
+                continue
+            if manager.register_transient(cfg):
+                n += 1
+    if n:
+        logger.info("cowork：套件自带的 MCP 注册了 %d 个", n)

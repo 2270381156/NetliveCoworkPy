@@ -215,12 +215,16 @@ function migrateLegacyAppData() {
  * ⚠ 也必须在 migrateLegacyAppData() **之后**：那个函数以"新目录还不存在"为判据，
  *    这里一旦先把 <appDataDir>/chromium 建出来，老数据就再也迁不过来了。
  */
-function migrateChromiumUserData(target) {
+function migrateChromiumUserData() {
   try {
-    if (fs.existsSync(target)) return;              // 迁过了
-    const legacy = app.getPath('userData');         // 此刻仍是默认值
+    const name = branding.legacyUserDataDir;
+    if (!name) return;                              // 派生品牌没有上一代
+    const legacy = path.join(app.getPath('appData'), name);
+    const target = getAppDataDir();
     if (!fs.existsSync(legacy)) return;             // 全新安装，没什么可迁
-    fs.cpSync(legacy, target, { recursive: true });
+    if (path.resolve(legacy).toLowerCase() === path.resolve(target).toLowerCase()) return;
+    // force:false —— 只补目标里没有的，绝不覆盖已有的业务数据。
+    fs.cpSync(legacy, target, { recursive: true, force: false, errorOnExist: false });
     // **拷完要删掉老目录**——留着的话用户在 AppData 下仍然看到两个文件夹，
     // "合成一个"就等于没做。这里删的是 Chromium 的缓存/Cookie/LocalStorage：
     // 已经完整拷到新位置，即便真丢了最坏也只是重登一次。与 migrateLegacyAppData
@@ -382,11 +386,25 @@ async function syncCoworkPackagesOnce({ applyNow = false } = {}) {
     // **也要告诉界面**。后端装完了、界面却不知道，用户看到的是"页眉里有这个智能体，
     // 新建会话却说你没有权限"—— 两处读的是同一份清单，只是界面那份是开机那一刻取的。
     // 用户唯一的出路是重启，而重启为什么管用他也不知道。
-    if (res.ok && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('coworks-changed');
-    }
+    if (res.ok) notifyCoworksChanged();
   } catch (e) {
     elog(`[cowork] 对账异常（不影响使用）：${(e && e.message) || e}`);
+  }
+}
+
+//: 套件变了但窗口还没建好 —— 记下来，等渲染层就绪补发。
+//
+// 取包跑在 startBackend 之后、createWindow 之前后不定，而全新安装恰恰是"套件刚装好、
+// 窗口刚出来"这两件事挨得最近的时候。直接 send 有一半概率发给一个还不存在的窗口，
+// 于是界面停在空阵容上，用户只能点重试。
+let coworksChangedPending = false;
+
+function notifyCoworksChanged() {
+  if (mainWindow && !mainWindow.isDestroyed() && rendererReady) {
+    mainWindow.webContents.send('coworks-changed');
+    coworksChangedPending = false;
+  } else {
+    coworksChangedPending = true;
   }
 }
 
@@ -1593,6 +1611,11 @@ ipcMain.handle('open-external', async (_, url) => {
 
 // Renderer mounted successfully — cancel the white-screen watchdog.
 ipcMain.on('renderer-ready', () => {
+  // 渲染层刚就绪：把它没赶上的那次阵容变更补上。
+  if (coworksChangedPending) {
+    coworksChangedPending = false;
+    try { mainWindow?.webContents.send('coworks-changed'); } catch (_) {}
+  }
   rendererReady = true;
   if (rendererWatchdog) { clearTimeout(rendererWatchdog); rendererWatchdog = null; }
   elog('Renderer signalled ready');
@@ -2040,21 +2063,13 @@ ipcMain.handle('report-session', async (_e, sessionId, note) => {
   }
 });
 
-// ── 目录迁移 + userData 重定向（**必须在 ready 之前**）─────────────────────────
-// 顺序是死的，不能换：
-//   1. migrateLegacyAppData  以"新目录不存在"为判据，必须最先跑
-//   2. migrateChromiumUserData 把默认 userData 并进来
-//   3. setPath 生效，此后 app.getPath('userData') 才是新值
+// ── 目录迁移（**必须在 ready 之前**）──────────────────────────────────────────
+//
+// userData 不再用 setPath 搬：npmName 与 appDataDir 现在只差大小写，
+// 而 Windows 路径大小写不敏感 —— Electron 的默认 userData 与业务数据目录本来就是
+// 同一个。少一层机关，也就少一个失败模式。
 migrateLegacyAppData();
-const CHROMIUM_USER_DATA = path.join(getAppDataDir(), 'chromium');
-migrateChromiumUserData(CHROMIUM_USER_DATA);
-try {
-  fs.mkdirSync(CHROMIUM_USER_DATA, { recursive: true });
-  app.setPath('userData', CHROMIUM_USER_DATA);
-} catch (e) {
-  // 失败就沿用默认路径：多一个目录不好看，但比起不来强。
-  try { process.stdout.write('setPath(userData) failed: ' + e.message + '\n'); } catch (_) {}
-}
+migrateChromiumUserData();
 
 app.whenReady().then(async () => {
   if (!gotSingleInstanceLock) return;
