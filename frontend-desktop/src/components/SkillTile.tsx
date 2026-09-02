@@ -272,9 +272,13 @@ export function Pager({ page, pages, onChange }: {
   // 只有一页就不显示：一个点不动的翻页器只是噪声。
   if (pages <= 1) return null
   return (
-    <div className="flex items-center justify-end gap-1.5 mt-3">
+    // 居中而不是靠右：靠右贴着边缘，宽屏下离内容很远，眼睛扫不到。
+    // 尺寸和颜色都往上提了一档——原先 22px + --t3，在一屏卡片下面几乎看不见。
+    <div className="flex items-center justify-center gap-2 mt-4 mb-1">
       <PagerBtn disabled={page <= 1} onClick={() => onChange(page - 1)}>‹</PagerBtn>
-      <span className="text-[11px] tabular-nums" style={{ color: 'var(--t3)', fontFamily: 'monospace' }}>
+      <span className="text-xs tabular-nums px-2.5 py-1 rounded-md"
+        style={{ color: 'var(--t1)', fontFamily: 'monospace',
+                 background: 'var(--bg2)', border: '1px solid var(--border)' }}>
         {page} / {pages}
       </span>
       <PagerBtn disabled={page >= pages} onClick={() => onChange(page + 1)}>›</PagerBtn>
@@ -291,13 +295,13 @@ function PagerBtn({ children, disabled, onClick }: {
       disabled={disabled}
       className="flex items-center justify-center rounded-lg transition-colors"
       style={{
-        width: 22, height: 22, fontSize: 13, lineHeight: 1,
-        color: disabled ? 'var(--t3)' : 'var(--t2)',
-        background: 'none', border: '1px solid var(--border)',
+        width: 28, height: 28, fontSize: 16, lineHeight: 1,
+        color: disabled ? 'var(--t3)' : 'var(--t1)',
+        background: disabled ? 'none' : 'var(--bg2)', border: '1px solid var(--border)',
         cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
       }}
       onMouseEnter={e => { if (!disabled) { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'var(--blue)'; el.style.color = 'var(--blue)' } }}
-      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'var(--border)'; el.style.color = disabled ? 'var(--t3)' : 'var(--t2)' }}
+      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'var(--border)'; el.style.color = disabled ? 'var(--t3)' : 'var(--t1)' }}
     >
       {children}
     </button>

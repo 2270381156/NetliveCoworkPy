@@ -1,6 +1,6 @@
 [project]
 name = "netlivecowork"
-version = "0.4.23"
+version = "0.6.9"
 description = "Service shell for ctx-weft: REST API, SSE, Postgres, LLM adapters."
 requires-python = ">=3.11"
 dependencies = [

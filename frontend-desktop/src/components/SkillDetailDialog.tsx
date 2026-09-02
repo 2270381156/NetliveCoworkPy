@@ -104,6 +104,9 @@ export function SkillDetailDialog({
             </Field>
           )}
 
+          {/* 还没引用的市场 skill 没有归属可言 —— 它还不属于任何人。
+              显示一栏“归属：—”只会让人以为这里漏了数据。引用之后这一栏自然出现。 */}
+          {item.kind !== 'market' && (
           <Field label={t('skills.ownerLabel')}>
             {onCoworksChange ? (
               <>
@@ -118,9 +121,10 @@ export function SkillDetailDialog({
               <p className="text-xs" style={{ color: 'var(--t2)' }}>{ownerLabel(item.coworks, t, agents) || '—'}</p>
             )}
           </Field>
+          )}
         </div>
 
-        {/* 操作条。改动性的操作都在这儿，卡片上只留「添加」。 */}
+        {/* 操作条。改动性的操作都在这儿，卡片上只留「引用」。 */}
         <div className="flex items-center gap-2 px-5 py-4" style={{ borderTop: '1px solid var(--border)' }}>
           {publishStatus && (
             <span className="text-[11px]" style={{ color: publishStatus.ok ? 'var(--green)' : 'var(--red)' }}>
@@ -184,7 +188,12 @@ function GhostButton({ children, onClick, danger, disabled }: {
       disabled={disabled}
       className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition-colors"
       style={{
-        color: 'var(--t3)', background: 'none', border: '1px solid transparent',
+        // ⚠ 静止态不能用 --t3（#8aa3bf，最淡的那档）+ 无边框：
+        // 那正是本产品里“禁用”的长相，用户会以为按钮点不了、压根不去点。
+        // 可点的东西必须在**不 hover 时**就看得出来。
+        color: disabled ? 'var(--t3)' : 'var(--t2)',
+        background: 'none',
+        border: `1px solid ${disabled ? 'transparent' : 'var(--border)'}`,
         cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
       }}
       onMouseEnter={e => {
