@@ -81,6 +81,35 @@ class LLMAccountDef:
 
 
 @dataclass(frozen=True)
+class SkillPreset:
+    """套件 `skills.presets` 里的一项：预置引用的**完整 L1 元数据**。
+
+    只存元数据、不碰内容：预置协调发生在启动/登录，那时不许访问网络，
+    ZIP 在实际使用时才临时下载。市场作用域**不在这里声明** —— 由包含它的
+    套件配置推导（见 scopes），声明值会与套件实际市场漂移。
+    """
+
+    source: str
+    remote_id: str
+    name: str
+    description: str
+    version: str = ""
+    triggers: tuple[str, ...] = ()
+
+
+#: skills.presets 的数量与元数据长度上限。运行期超限**跳过并记日志**；
+#: 发布侧按同一套契约**严格拒绝**（发布服务不在本仓，接入时镜像这些常量）。
+MAX_SKILL_PRESETS = 128
+MAX_PRESET_SOURCE_LENGTH = 64
+MAX_PRESET_REMOTE_ID_LENGTH = 256
+MAX_PRESET_NAME_LENGTH = 200
+MAX_PRESET_DESCRIPTION_LENGTH = 4_000
+MAX_PRESET_VERSION_LENGTH = 128
+MAX_PRESET_TRIGGERS = 64
+MAX_PRESET_TRIGGER_LENGTH = 256
+
+
+@dataclass(frozen=True)
 class Cowork:
     """一个已装的 cowork。字段说明见需求附录 A。"""
 
@@ -133,6 +162,10 @@ class Cowork:
     #: 这个 cowork 的 mythos 形态市场（套件 `skills.mythosBaseUrl`）。空 = 没有。
     #: 与上一个是**两种接口**，不是"公共/个人"之分。
     skill_mythos_url: str = ""
+
+    #: 预置的 skill 引用（套件 `skills.presets`）。空 = 没有预置。
+    #: 启动/登录时由 ProfileSkillPresetReconciler 协调进引用库，见 references/presets。
+    skill_presets: tuple["SkillPreset", ...] = ()
 
     @property
     def template_id(self) -> str:

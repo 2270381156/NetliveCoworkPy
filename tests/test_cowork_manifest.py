@@ -12,8 +12,10 @@ import json
 
 from netlivecowork.cowork.manifest import (
     DEFAULT_ORDER,
+    MAX_SKILL_PRESETS,
     MASTER_ID,
     Cowork,
+    SkillPreset,
     bare_id,
 )
 from netlivecowork.cowork.manifest_parse import parse, read
@@ -158,6 +160,72 @@ def test_mcp_define_keeps_the_raw_config_shape():
 def test_mcp_define_entries_that_are_not_objects_are_skipped():
     c = parse(_raw(mcp={"define": {"good": {"url": "u"}, "bad": "not-a-dict"}}))
     assert [d.name for d in c.mcp_define] == ["good"]
+
+
+# ── skills.presets：profile 预置的 skill 引用 ─────────────────────────────────
+
+def test_manifest_parses_skill_presets():
+    """完整 L1 元数据原样进模型：预置协调全靠这份元数据，启动时不访问市场。"""
+    c = parse(_raw(skills={
+        "pullServerUrl": "https://cowork",
+        "presets": [{
+            "source": "mythos",
+            "remoteId": "1129",
+            "name": "调用量上报",
+            "description": "上报调用量",
+            "version": "1.0",
+            "triggers": ["调用量", "上报"],
+        }],
+    }))
+    assert c is not None
+    assert c.skill_presets == (SkillPreset(
+        source="mythos",
+        remote_id="1129",
+        name="调用量上报",
+        description="上报调用量",
+        version="1.0",
+        triggers=("调用量", "上报"),
+    ),)
+
+
+def test_manifest_skips_invalid_and_duplicate_skill_presets(caplog):
+    """坏的那一条跳过，不连累其余；重复身份只留第一条。"""
+    c = parse(_raw(skills={"presets": [
+        {"source": "cowork", "remoteId": "1", "name": "A", "description": "d"},
+        {"source": "cowork", "remoteId": "1", "name": "duplicate", "description": "d"},
+        {"source": "", "remoteId": "2", "name": "bad", "description": "d"},
+        "not-an-object",
+    ]}))
+    assert [(p.source, p.remote_id) for p in c.skill_presets] == [("cowork", "1")]
+    assert "preset" in caplog.text.lower()
+
+
+def test_manifest_limits_skill_preset_count_and_metadata(caplog):
+    """超上限的条目跳过：数量与长度上限是契约，发布侧按同一套严格拒绝。"""
+    with caplog.at_level("WARNING"):
+        c = parse(_raw(skills={"presets": [
+            # name 超长（上限 200）→ 整条跳过
+            {"source": "cowork", "remoteId": "1", "name": "x" * 201, "description": "d"},
+            # 单个 trigger 超长（上限 256）→ 整条跳过
+            {"source": "cowork", "remoteId": "2", "name": "B", "description": "d",
+             "triggers": ["y" * 257]},
+            # name 恰好压线 200 → 保留
+            {"source": "cowork", "remoteId": "3", "name": "z" * 200, "description": "d"},
+        ]}))
+    assert [p.remote_id for p in c.skill_presets] == ["3"]
+
+    many = [{"source": "cowork", "remoteId": str(i), "name": f"n{i}", "description": "d"}
+            for i in range(MAX_SKILL_PRESETS + 5)]
+    c2 = parse(_raw(skills={"presets": many}))
+    assert len(c2.skill_presets) == MAX_SKILL_PRESETS
+
+
+def test_skill_presets_default_to_empty_and_tolerate_wrong_type():
+    """没写 presets、或写成非列表，都当没有预置，不影响其余字段。"""
+    c = parse(_raw(skills={"pullServerUrl": "https://m/api"}))
+    assert c is not None and c.skill_presets == ()
+    c2 = parse(_raw(skills={"presets": "oops"}))
+    assert c2 is not None and c2.skill_presets == () and c2.skill_market_url == ""
 
 
 # ── 空语义：MCP 与 LLM 刻意相反 ───────────────────────────────────────────────

@@ -16,12 +16,21 @@ from pathlib import Path
 
 from .manifest import (
     DEFAULT_ORDER,
+    MAX_PRESET_DESCRIPTION_LENGTH,
+    MAX_PRESET_NAME_LENGTH,
+    MAX_PRESET_REMOTE_ID_LENGTH,
+    MAX_PRESET_SOURCE_LENGTH,
+    MAX_PRESET_TRIGGERS,
+    MAX_PRESET_TRIGGER_LENGTH,
+    MAX_PRESET_VERSION_LENGTH,
+    MAX_SKILL_PRESETS,
     Cowork,
     LLMAccountDef,
     LLMModelDef,
     MANIFEST_NAME,
     MASTER_ID,
     MCPServerDef,
+    SkillPreset,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,6 +125,69 @@ def _int(v: object, default: int) -> int:
         return default
 
 
+def _bounded_text(item: dict, key: str, limit: int, *, required: bool = True) -> str | None:
+    """取一个字符串字段。必填却缺失、或超过长度上限 → None，由调用方整条跳过。
+
+    上限在这里挡而不是留给市场层：预置元数据会进引用库长期保存，
+    一条超大 description 的代价是每次列引用都拖着它。
+    """
+    value = str(item.get(key) or "").strip()
+    if (required and not value) or len(value) > limit:
+        return None
+    return value
+
+
+def _skill_presets(raw: object) -> tuple[SkillPreset, ...]:
+    """解析 `skills.presets`。**坏的那一条跳过，不连累其余**（运行期容忍，A7）。
+
+    超过 `MAX_SKILL_PRESETS` 只处理前面的并记日志；重复的 `(source, remote_id)`
+    只留第一条 —— 两条都留的话，协调器会把同一个身份加两遍绑定。
+    """
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    if len(raw) > MAX_SKILL_PRESETS:
+        logger.warning(
+            "cowork：skills.presets 有 %d 项，超过上限 %d，只处理前 %d 项",
+            len(raw), MAX_SKILL_PRESETS, MAX_SKILL_PRESETS,
+        )
+    out: list[SkillPreset] = []
+    seen: set[tuple[str, str]] = set()
+    for index, item in enumerate(raw[:MAX_SKILL_PRESETS]):
+        if not isinstance(item, dict):
+            logger.warning("cowork：skills.presets[%d] 不是对象，跳过", index)
+            continue
+        fields = (
+            _bounded_text(item, "source", MAX_PRESET_SOURCE_LENGTH),
+            _bounded_text(item, "remoteId", MAX_PRESET_REMOTE_ID_LENGTH),
+            _bounded_text(item, "name", MAX_PRESET_NAME_LENGTH),
+            _bounded_text(item, "description", MAX_PRESET_DESCRIPTION_LENGTH),
+            _bounded_text(item, "version", MAX_PRESET_VERSION_LENGTH, required=False),
+        )
+        triggers = _str_tuple(item.get("triggers"))
+        oversized = (
+            len(triggers) > MAX_PRESET_TRIGGERS
+            or any(len(t) > MAX_PRESET_TRIGGER_LENGTH for t in triggers)
+        )
+        if None in fields or oversized:
+            logger.warning("cowork：skills.presets[%d] 字段缺失或超过长度上限，跳过", index)
+            continue
+        source, remote_id, name, description, version = fields  # type: ignore[misc]
+        key = (source, remote_id)
+        if key in seen:
+            logger.warning("cowork：skills.presets[%d] 预置身份重复，跳过", index)
+            continue
+        seen.add(key)
+        out.append(SkillPreset(
+            source=source,
+            remote_id=remote_id,
+            name=name,
+            description=description,
+            version=version,
+            triggers=triggers,
+        ))
+    return tuple(out)
+
+
 def _opt_int(v: object) -> int | None:
     if v in (None, ""):
         return None
@@ -178,6 +250,7 @@ def parse(raw: object) -> Cowork | None:
         llm_default_model=_default_llm(llm).get("model", ""),
         skill_market_url=str(skills.get("pullServerUrl") or "").strip(),
         skill_mythos_url=str(skills.get("mythosBaseUrl") or "").strip(),
+        skill_presets=_skill_presets(skills.get("presets")),
     )
 
 
