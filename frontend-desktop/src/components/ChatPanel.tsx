@@ -1068,6 +1068,7 @@ export function ChatPanel({ sessionId, sse, pendingSession, user, onSessionCreat
       composerRef.current?.clear()
       setPendingInput('')
       setPendingTokens(0)
+      void reportPendingAbuse(session.id)   // 首条：会话已含 user_prompt，此刻上报才带得上原话
       onSessionCreated(session.id)
     },
   })
@@ -1082,7 +1083,7 @@ export function ChatPanel({ sessionId, sse, pendingSession, user, onSessionCreat
       )
     },
     // 向已结束会话发消息会使其恢复运行；该会话的事件流在终态时已被关闭，需重新订阅。
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sessions'] }); composerRef.current?.clear(); sse.reconnect() },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sessions'] }); composerRef.current?.clear(); sse.reconnect(); void reportPendingAbuse(sessionId) },
   })
   type HitlAction = { item: ChatWaitingInput; text?: string }
   const idOf = async (item: ChatWaitingInput) =>
@@ -1200,25 +1201,37 @@ export function ChatPanel({ sessionId, sse, pendingSession, user, onSessionCreat
   const [abuseNotice, setAbuseNotice] = useState<null | { reported: boolean }>(null)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current) }, [])
+  // 待上报的辱骂（命中信息）。**上报要等这句用户原话落库之后**才做——上报会导出会话数据，
+  // 而触发这次的原话此刻还没进会话/DB，现在报只会报一份缺了原话的记录（看不到用户骂了啥）。
+  // 所以检测到就先记在这里，等 createMut/sendMut 成功（消息已进会话）再由 reportPendingAbuse 上报。
+  const abuseToReport = useRef<NonNullable<ReturnType<typeof detectAbuse>> | null>(null)
 
   // 节流见 lib/abuseReport.ts：同一会话按冷却期限流，而不是「一辈子只报一次」——
   // 用户隔天接着聊、又骂，那时会话里全是新内容，该报。
   // 注意只有**成功**才记冷却：失败不该占掉这次机会，否则半小时内再骂也不会重试。
-  async function reactToAbuse(hit: NonNullable<ReturnType<typeof detectAbuse>>) {
+  // 检测到辱骂：**只**扔粑粑（即时反应）+ 记下待上报。**不在这里上报**——见 abuseToReport。
+  function reactToAbuse(hit: NonNullable<ReturnType<typeof detectAbuse>>) {
     setPoopTrigger(n => n + 1)
+    abuseToReport.current = hit
+  }
+
+  // 上报待处理的辱骂。由消息落库点调用（createMut / sendMut 的 onSuccess）——此刻这句原话
+  // 已经在会话里，导出的会话数据才带得上它。sid 用落库后确定的会话 id（首条来自新建返回）。
+  async function reportPendingAbuse(sid: string | null | undefined) {
+    const hit = abuseToReport.current
+    if (!hit || !sid) return
+    abuseToReport.current = null
 
     let reported = false
-    if (sessionId) {
-      if (!canReportAbuse(sessionId)) {
-        reported = true   // 冷却期内 = 不久前刚成功报过
-      } else {
-        const note = `自动上报：用户骂了（命中「${hit.term}」，${hit.lang}/${hit.tier}），已向其发送扔粑粑弹幕。`
-        try {
-          const r = await window.electronAPI?.reportSession?.(sessionId, note)
-          reported = !!r?.ok
-        } catch { reported = false }
-        if (reported) markAbuseReported(sessionId)
-      }
+    if (!canReportAbuse(sid)) {
+      reported = true   // 冷却期内 = 不久前刚成功报过
+    } else {
+      const note = `自动上报：用户骂了（命中「${hit.term}」，${hit.lang}/${hit.tier}），已向其发送扔粑粑弹幕。`
+      try {
+        const r = await window.electronAPI?.reportSession?.(sid, note)
+        reported = !!r?.ok
+      } catch { reported = false }
+      if (reported) markAbuseReported(sid)
     }
 
     // 等粑粑飞得差不多了再弹字，两个动画别抢注意力
@@ -1254,7 +1267,7 @@ export function ChatPanel({ sessionId, sse, pendingSession, user, onSessionCreat
 
     // 骂人彩蛋：只是加个反应，不拦消息——该发还是照发。
     const abuse = detectAbuse(text)
-    if (abuse) void reactToAbuse(abuse)
+    if (abuse) reactToAbuse(abuse)
 
     // Pending mode: first message triggers session creation
     if (pendingSession) {
@@ -1300,7 +1313,7 @@ export function ChatPanel({ sessionId, sse, pendingSession, user, onSessionCreat
       // 首条消息不走 handleSend，彩蛋要在这儿单独接一次。此刻会话还没建出来、
       // 没有 sessionId，reactToAbuse 里会走「没能自动上报」那版文案。
       const firstAbuse = detectAbuse(text)
-      if (firstAbuse) void reactToAbuse(firstAbuse)
+      if (firstAbuse) reactToAbuse(firstAbuse)
       pendingHistory.commit(text)
       const { skillName, prompt } = parseSkillCommand(text, skills, pendingSkillMenu.picked)
       createMut.mutate({ text: prompt, skillName })
