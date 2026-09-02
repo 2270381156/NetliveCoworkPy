@@ -185,7 +185,16 @@ function migrateLegacyAppData() {
     const oldDir = path.join(app.getPath('appData'), legacyDirName);
     if (fs.existsSync(newDir)) return;   // already migrated / fresh new-layout run
     if (!fs.existsSync(oldDir)) return;  // fresh install, nothing to migrate
-    fs.cpSync(oldDir, newDir, { recursive: true });
+    // ⚠ **不继承上一代的 resources/mcp.json**。那里面是 IPMaster 内部的 mcp
+    // （knowledge-a-net / site-kb / tech-kb 等），迁过来后 seedBundledMcpConfig 又只 merge
+    // 不删，于是全新 NetLIVE 用户目录里凭空多出这几个连不上的旧 endpoint。跳过它 →
+    // 迁移后由 seedBundledMcpConfig 播种**随包**那份（只 browser-mcp）。用户装完自己在
+    // NetLIVE 里配的 mcp 不经这里、不受影响。
+    const legacyMcpJson = path.resolve(path.join(oldDir, 'resources', 'mcp.json'));
+    fs.cpSync(oldDir, newDir, {
+      recursive: true,
+      filter: (src) => path.resolve(src) !== legacyMcpJson,
+    });
     const envPath = path.join(newDir, '.env');
     if (fs.existsSync(envPath)) {
       const txt = fs.readFileSync(envPath, 'utf8')
@@ -1061,6 +1070,9 @@ function startBackend(bridgeInfo = null) {
       NLC_LEGACY_APPDATA_DIR: branding.legacyAppDataDir
         ? path.join(app.getPath('appData'), branding.legacyAppDataDir)
         : '',
+      // 上一代 agent id（迁移来的历史会话 agent:default 归属它）。后端 is_readonly 用它判定：
+      // 用户没有这个 cowork 的权限时，这些历史会话该归档而非保持正常。派生品牌/无历史时为空。
+      NLC_LEGACY_AGENT_ID: branding.legacyAgentId || '',
       NLC_AGENTS_DIR: getUserAgentsDir(),
     },
     cwd: getAppDataDir(),

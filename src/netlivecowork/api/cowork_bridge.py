@@ -70,8 +70,18 @@ def is_readonly(template_id: str | None) -> bool:
         from netlivecowork.cowork.runtime import lineup_known
 
         cid = bare_id(str(template_id or "")).strip()
-        if not cid or cid == MASTER_ID:
+        if not cid:
             return False
+        if cid == MASTER_ID:
+            # 母版归属（agent:default）= agent 上线**之前**的历史会话。它们实际归属上一代
+            # agent（legacy_agent_id，如 ipmaster）——迁移过来时前端也是这么归类的。
+            # 此前一律豁免，导致"用户一个 cowork 权限都没有时，这些历史会话仍是正常状态"
+            # （用户明确要它们归档）。改为**按 legacy agent 判**：有它的权限就正常、没有就归档。
+            from netlivecowork.config import get_settings
+            legacy = (get_settings().legacy_agent_id or "").strip()
+            if not legacy:
+                return False   # 没配 legacy（派生品牌 / 无历史）→ 维持旧豁免，向后兼容
+            cid = legacy
         if not lineup_known():
             return False
         return cid not in s.installed_ids()
