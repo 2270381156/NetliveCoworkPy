@@ -153,7 +153,11 @@ function sessionWithFreshTokenUsageEpoch(accessToken, user, options) {
 // 让上报归属 / 重试队列 / 登录切换闸门在两种登录模式下按同一套规则运转。
 // accessToken（可选）为 local-token 换取的云端 JWT，存入 access_token 后
 // getToken / tokenUsageContextFromSession 会优先用它做鉴权与上报。
-function w3SessionWithFreshTokenUsageEpoch(uid, user, options, accessToken) {
+// uuid（可选，W3 企业永久人员 id，换工号不变）登录时顺手捕获、存着备用：
+// 平时不出场，只在换工号那一刻用来认人（见 netcowork
+// doc/IDENTITY_SURROGATE_ANCHOR.md §2）。与 accessToken 一样"有才写"，
+// 空时保持旧会话形状不变。
+function w3SessionWithFreshTokenUsageEpoch(uid, user, options, accessToken, uuid) {
   const session = {
     uid,
     user,
@@ -161,6 +165,7 @@ function w3SessionWithFreshTokenUsageEpoch(uid, user, options, accessToken) {
     token_usage_epoch: createTokenUsageEpoch(user, options),
   };
   if (accessToken) session.access_token = accessToken;
+  if (uuid) session.uuid = uuid;
   return session;
 }
 
@@ -426,9 +431,9 @@ async function startLoginW3({ w3Config, pythonBackendUrl, appDataDir, devSkipAut
     // 6. 存储会话 (w3: true 标记; access_token 为 local-token 换取的云端 JWT)。
     // 主页面仍在等待 auth-login IPC，返回 user 后 LoginGate 直接进入首页，无需重新加载。
     saveSession(appDataDir, w3SessionWithFreshTokenUsageEpoch(
-      data.uid, data.user, undefined, data.access_token,
+      data.uid, data.user, undefined, data.access_token, data.uuid,
     ));
-    log(`W3 会话已保存，hasUser=${!!data.user}, hasJwt=${!!data.access_token}`);
+    log(`W3 会话已保存，hasUser=${!!data.user}, hasJwt=${!!data.access_token}, hasUuid=${!!data.uuid}`);
     return data.user;
   } finally {
     // OAuth 完成、失败或后端校验异常时都移除 W3 视图；不导航主应用页面。
