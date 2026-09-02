@@ -120,22 +120,62 @@ Add a `_skill_presets(raw)` helper in `manifest_parse.py`. It must:
 Use this shape:
 
 ```python
+MAX_SKILL_PRESETS = 128
+MAX_PRESET_SOURCE_LENGTH = 64
+MAX_PRESET_REMOTE_ID_LENGTH = 256
+MAX_PRESET_NAME_LENGTH = 200
+MAX_PRESET_DESCRIPTION_LENGTH = 4_000
+MAX_PRESET_VERSION_LENGTH = 128
+MAX_PRESET_TRIGGERS = 64
+MAX_PRESET_TRIGGER_LENGTH = 256
+
+
+def _bounded_text(
+    item: dict, key: str, limit: int, *, required: bool = True,
+) -> str | None:
+    value = str(item.get(key) or "").strip()
+    if (required and not value) or len(value) > limit:
+        return None
+    return value
+
+
 def _skill_presets(raw: object) -> tuple[SkillPreset, ...]:
     if not isinstance(raw, (list, tuple)):
         return ()
+    if len(raw) > MAX_SKILL_PRESETS:
+        logger.warning(
+            "cowork：skills.presets 超过 %d 项，只处理前 %d 项",
+            MAX_SKILL_PRESETS,
+            MAX_SKILL_PRESETS,
+        )
     out: list[SkillPreset] = []
     seen: set[tuple[str, str]] = set()
     for index, item in enumerate(raw[:MAX_SKILL_PRESETS]):
         if not isinstance(item, dict):
             logger.warning("cowork：skills.presets[%d] 不是对象，跳过", index)
             continue
-        source = str(item.get("source") or "").strip()
-        remote_id = str(item.get("remoteId") or "").strip()
-        name = str(item.get("name") or "").strip()
-        description = str(item.get("description") or "").strip()
+        source = _bounded_text(item, "source", MAX_PRESET_SOURCE_LENGTH)
+        remote_id = _bounded_text(item, "remoteId", MAX_PRESET_REMOTE_ID_LENGTH)
+        name = _bounded_text(item, "name", MAX_PRESET_NAME_LENGTH)
+        description = _bounded_text(
+            item, "description", MAX_PRESET_DESCRIPTION_LENGTH,
+        )
+        version = _bounded_text(
+            item, "version", MAX_PRESET_VERSION_LENGTH, required=False,
+        )
+        triggers = _str_tuple(item.get("triggers"))
+        oversized_triggers = (
+            len(triggers) > MAX_PRESET_TRIGGERS
+            or any(len(trigger) > MAX_PRESET_TRIGGER_LENGTH for trigger in triggers)
+        )
+        if None in (source, remote_id, name, description, version) or oversized_triggers:
+            logger.warning("cowork：skills.presets[%d] 字段缺失或超过长度上限，跳过", index)
+            continue
+        assert source is not None and remote_id is not None
+        assert name is not None and description is not None and version is not None
         key = (source, remote_id)
-        if not all((*key, name, description)) or key in seen:
-            logger.warning("cowork：skills.presets[%d] 字段不全或重复，跳过", index)
+        if key in seen:
+            logger.warning("cowork：skills.presets[%d] 重复，跳过", index)
             continue
         seen.add(key)
         out.append(SkillPreset(
@@ -143,8 +183,8 @@ def _skill_presets(raw: object) -> tuple[SkillPreset, ...]:
             remote_id=remote_id,
             name=name,
             description=description,
-            version=str(item.get("version") or "").strip(),
-            triggers=_str_tuple(item.get("triggers")),
+            version=version,
+            triggers=triggers,
         ))
     return tuple(out)
 ```
@@ -199,12 +239,26 @@ def test_v2_reference_migrates_without_changing_visibility(tmp_path):
     assert ref.effective_labels == ("ipmaster",)
 
 
-def test_deleted_bundled_default_does_not_reappear_after_v2_to_v3(tmp_path, default_file):
+def test_deleted_bundled_default_does_not_reappear_after_v2_to_v3(tmp_path):
     # The reference is absent because the user deleted it, but v2 remembers that it was seeded.
     (tmp_path / "skill_references.json").write_text(json.dumps({
         "version": 2,
         "references": {},
         "seeded_defaults": ["cowork:9"],
+    }), encoding="utf-8")
+    default_file = tmp_path / "skill_references.default.json"
+    default_file.write_text(json.dumps({
+        "version": 2,
+        "references": {"cowork:9": {
+            "source": "cowork",
+            "remote_id": "9",
+            "name": "Bundled",
+            "description": "Bundled default",
+            "triggers": [],
+            "skill_version": "1.0",
+            "owner": None,
+            "referenced_at": None,
+        }},
     }), encoding="utf-8")
     store = SkillReferenceStore(tmp_path)
     seed_default_references(default_file, store)
@@ -313,8 +367,23 @@ Update `defaults.py` to:
 
 - construct `ReferenceIdentity(market_scope=GENERAL_SCOPE, ...)` and the new `SkillReference` shape;
 - derive `principal` without changing existing visibility: use the old `owner` only when `source in market_registry.per_user_sources()` and the owner is non-empty; otherwise use `*`;
+- build that exact identity before checking for an existing reference and query it with `store.get_by_id(identity.reference_id)`; do not call the ambiguous compatibility helper `get_reference(source, remote_id)`, because a scoped reference with the same source/remote ID must not interfere with general bundled-default seeding or metadata refresh;
 - query and mark `bundled_default_seed_id(source, remote_id)`, never `ref.key`;
 - perform each seed/update plus ledger mark in one `store.mutate()` transaction.
+
+The existing-reference path must therefore follow this shape:
+
+```python
+principal = (
+    old.owner
+    if old.source in market_registry.per_user_sources() and old.owner
+    else "*"
+)
+identity = ReferenceIdentity(GENERAL_SCOPE, old.source, old.remote_id, principal)
+existing = store.get_by_id(identity.reference_id)
+```
+
+Add a collision regression test containing both a general and a profile-scoped reference with the same `source/remote_id`. Seeding must refresh only the exact general identity and must neither raise `ValueError` nor alter the scoped reference.
 
 The regression test above is mandatory: an absent reference plus a migrated seed-ledger entry means “user deleted it” and must not be recreated.
 
