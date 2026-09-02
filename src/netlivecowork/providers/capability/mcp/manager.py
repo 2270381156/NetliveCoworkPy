@@ -74,6 +74,10 @@ class MCPProviderManager:
         # _all: 历史上所有创建的 providers，用于 close_all()
         # deregister 后 provider 移出 _active 但留在 _all，保证运行中 session 不被中断
         self._all: list[MCPCapabilityProvider] = []
+        # 套件下发（transient / 不落盘）且注册成功的 server 名字。启动时的连通性自检
+        # 只针对这些——它们的 url/header 来自云端下发的 cowork 套件，最需要在启动日志里
+        # 留下"连没连上、抓到哪些工具"的证据（随包 browser-mcp、用户手配的不在此列）。
+        self._transient_names: set[str] = set()
 
     def load_from_store(self) -> None:
         """应用启动时从 mcp.json 还原所有 MCP server。"""
@@ -107,6 +111,7 @@ class MCPProviderManager:
             return False
         try:
             self._create_and_register(config)
+            self._transient_names.add(config.name)
             logger.info("MCPProviderManager: 套件下发的 '%s' 已注册（不落盘）", config.name)
             return True
         except Exception:
@@ -163,6 +168,61 @@ class MCPProviderManager:
         )
         ok = sum(1 for r in results if r is True)
         logger.info("MCPProviderManager: prewarmed %d/%d MCP server(s)", ok, len(providers))
+
+    async def probe_transient_and_log(self) -> None:
+        """启动连通性自检：对**套件下发**的每个 MCP server 真连一次、拉工具清单，打进日志。
+
+        为什么单独有这一步：套件的 url/header 来自云端下发，装配期只是把它们注册进来
+        （register_transient），并不知道那个内网地址到底通不通、header 对不对、后端到底
+        暴露了哪些工具。连不上时 agent 侧只会在**用到的时候**才惰性重连并报错，排查时
+        既看不到"是哪个 server 连不上"，也看不到"本该有哪些工具"。这里在启动日志里
+        一次性把这些落下来。
+
+        纯诊断、best-effort：连不上只记 warning，绝不抛（agent 路径仍会惰性重连，见
+        prewarm_all 的注释）。放在后台 prewarm task 里调，不挡 lifespan / /health。
+        """
+        names = sorted(self._transient_names)
+        if not names:
+            return
+        logger.info("MCP 连通性自检：套件下发的 server 共 %d 个，逐个连接并拉取工具…", len(names))
+        for name in names:
+            provider = self._active.get(name)
+            if provider is None:
+                continue
+            cfg = getattr(provider, "_cfg", None)
+            if cfg is not None and cfg.transport != "stdio":
+                endpoint = cfg.url
+            elif cfg is not None and cfg.command:
+                endpoint = cfg.command[0]
+            else:
+                endpoint = "?"
+            try:
+                # ⚠ 必须先 start()：list()/_ensure_connected 是**非阻塞**的（绝不挡 agent loop，
+                # 后台连、没连上就优雅降级返回空），冷 provider 上直接 list() 会拿到 0 个工具、
+                # status 停在 CONNECTING。start() 会真等到握手完成（至多 connect_timeout+5s）。
+                # 对已被 prewarm 连上的 provider，start() 幂等、立即返回 True。
+                connected = await provider.start()
+                if not connected:
+                    logger.warning(
+                        "MCP 连通性自检 [%s] 连不上：endpoint=%s status=%s"
+                        "（连接超时/被拒，agent 侧会惰性重连）",
+                        name, endpoint, provider.connection_status,
+                    )
+                    continue
+                provider._capabilities_cache = None
+                await provider.list(_DUMMY_CTX)
+                caps = provider._capabilities_cache or []
+                tools = [c.name for c in caps]
+                logger.info(
+                    "MCP 连通性自检 [%s] OK：endpoint=%s status=%s 工具 %d 个：%s",
+                    name, endpoint, provider.connection_status, len(tools),
+                    ", ".join(tools) if tools else "(无)",
+                )
+            except Exception as e:
+                logger.warning(
+                    "MCP 连通性自检 [%s] 失败：endpoint=%s status=%s error=%s",
+                    name, endpoint, getattr(provider, "connection_status", "?"), e,
+                )
 
     async def close_all(self) -> None:
         """shutdown 时关闭所有 provider 子进程。"""
