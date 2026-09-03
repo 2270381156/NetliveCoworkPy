@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -34,12 +34,19 @@ function setup(count = 1, props: Partial<ComponentProps<typeof EditableSessionTi
   return client
 }
 
+function clickEditButton(titleIndex = 0) {
+  const title = screen.getAllByText('AI 自动标题')[titleIndex]
+  const titleRoot = title.parentElement!.parentElement!
+  fireEvent.mouseEnter(titleRoot)
+  fireEvent.click(within(titleRoot).getByRole('button', { name: '修改会话标题' }))
+}
+
 describe('EditableSessionTitle', () => {
-  test('单击进入编辑后按 Enter 保存修剪后的标题并同步会话缓存', async () => {
+  test('点击编辑图标后按 Enter 保存修剪后的标题并同步会话缓存', async () => {
     renameTitle.mockResolvedValueOnce({ ...SESSION, title: '手动标题' })
     const client = setup()
 
-    fireEvent.click(screen.getByText('AI 自动标题'))
+    clickEditButton()
     const input = screen.getByRole('textbox')
     expect(input).toHaveValue('AI 自动标题')
     fireEvent.change(input, { target: { value: '  手动标题  ' } })
@@ -54,7 +61,7 @@ describe('EditableSessionTitle', () => {
     renameTitle.mockClear()
     setup()
 
-    fireEvent.click(screen.getByText('AI 自动标题'))
+    clickEditButton()
     const input = screen.getByRole('textbox')
     fireEvent.change(input, { target: { value: '不保存' } })
     fireEvent.keyDown(input, { key: 'Escape' })
@@ -68,7 +75,7 @@ describe('EditableSessionTitle', () => {
     renameTitle.mockResolvedValueOnce({ ...SESSION, title: '失焦保存' })
     setup()
 
-    fireEvent.click(screen.getByText('AI 自动标题'))
+    clickEditButton()
     const input = screen.getByRole('textbox')
     fireEvent.change(input, { target: { value: '失焦保存' } })
     fireEvent.blur(input)
@@ -80,7 +87,7 @@ describe('EditableSessionTitle', () => {
     renameTitle.mockRejectedValueOnce(new Error('network'))
     setup()
 
-    fireEvent.click(screen.getByText('AI 自动标题'))
+    clickEditButton()
     const input = screen.getByRole('textbox')
     fireEvent.change(input, { target: { value: '待重试标题' } })
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -93,7 +100,7 @@ describe('EditableSessionTitle', () => {
     renameTitle.mockResolvedValueOnce({ ...SESSION, title: '同步标题' })
     setup(2)
 
-    fireEvent.click(screen.getAllByText('AI 自动标题')[0])
+    clickEditButton(0)
     const input = screen.getByRole('textbox')
     fireEvent.change(input, { target: { value: '同步标题' } })
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -101,15 +108,36 @@ describe('EditableSessionTitle', () => {
     await waitFor(() => expect(screen.getAllByText('同步标题')).toHaveLength(2))
   })
 
-  test('列表标题悬停时铅笔紧跟文字，点击后打开全页面模态框', () => {
-    setup(1, { mode: 'modal', editOnTitleClick: false })
+  test('列表标题使用完整宽度且悬停操作覆盖在标题右侧', () => {
+    setup(1, {
+      mode: 'modal',
+      trailingActions: (
+        <>
+          <button type="button" aria-label="置顶" />
+          <button type="button" aria-label="归档" />
+          <button type="button" aria-label="删除" />
+        </>
+      ),
+    })
 
     expect(screen.queryByRole('button', { name: '修改会话标题' })).toBeNull()
-    fireEvent.mouseEnter(screen.getByText('AI 自动标题').parentElement!)
+    const viewport = screen.getByText('AI 自动标题').parentElement!
+    expect(viewport).toHaveStyle({ maxWidth: '100%' })
+    fireEvent.mouseEnter(viewport.parentElement!)
 
-    const editButton = screen.getByRole('button', { name: '修改会话标题' })
-    expect(screen.getByText('AI 自动标题').parentElement?.nextElementSibling).toBe(editButton)
-    fireEvent.click(editButton)
+    const actions = screen.getByTestId('session-title-actions')
+    expect(actions).toHaveClass('absolute', 'right-0')
+    expect(within(actions).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual([
+      '修改会话标题', '置顶', '归档', '删除',
+    ])
+    const editButton = within(actions).getByRole('button', { name: '修改会话标题' })
+    expect(editButton).toHaveStyle({ color: 'var(--t3)' })
+    fireEvent.mouseEnter(editButton)
+    expect(editButton).toHaveStyle({ color: 'var(--blue)' })
+    fireEvent.mouseLeave(editButton)
+    expect(editButton).toHaveStyle({ color: 'var(--t3)' })
+    fireEvent.mouseEnter(viewport.parentElement!)
+    fireEvent.click(screen.getByRole('button', { name: '修改会话标题' }))
     const dialog = screen.getByRole('dialog', { name: '修改会话标题' })
     expect(dialog).toHaveAttribute('aria-modal', 'true')
     expect(screen.getByRole('textbox')).toHaveValue('AI 自动标题')
@@ -121,9 +149,9 @@ describe('EditableSessionTitle', () => {
 
   test('列表标题模态框点击取消时关闭且不保存', () => {
     renameTitle.mockClear()
-    setup(1, { mode: 'modal', editOnTitleClick: true })
+    setup(1, { mode: 'modal' })
 
-    fireEvent.click(screen.getByText('AI 自动标题'))
+    clickEditButton()
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '不应保存' } })
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
 
@@ -133,9 +161,9 @@ describe('EditableSessionTitle', () => {
 
   test('列表标题模态框点击保存时提交新标题', async () => {
     renameTitle.mockResolvedValueOnce({ ...SESSION, title: '模态框标题' })
-    setup(1, { mode: 'modal', editOnTitleClick: true })
+    setup(1, { mode: 'modal' })
 
-    fireEvent.click(screen.getByText('AI 自动标题'))
+    clickEditButton()
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '模态框标题' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
@@ -149,7 +177,7 @@ describe('EditableSessionTitle', () => {
     render(
       <QueryClientProvider client={client}>
         <div onClick={onSelect}>
-          <EditableSessionTitle session={SESSION} mode="modal" editOnTitleClick={false} />
+          <EditableSessionTitle session={SESSION} mode="modal" />
         </div>
       </QueryClientProvider>,
     )
@@ -159,24 +187,34 @@ describe('EditableSessionTitle', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  test('已选中的列表标题再次单击时打开编辑浮层', () => {
-    setup(1, { mode: 'modal', editOnTitleClick: true })
+  test('单击或双击标题文字都不会进入编辑', () => {
+    setup(1, { mode: 'modal' })
 
-    fireEvent.click(screen.getByText('AI 自动标题'))
-    expect(screen.getByRole('dialog', { name: '修改会话标题' })).toBeInTheDocument()
+    const title = screen.getByText('AI 自动标题')
+    fireEvent.click(title)
+    fireEvent.doubleClick(title)
+
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  test('会话面板悬停显示铅笔，点击标题后直接原位输入而不弹层', () => {
+  test('会话面板持续展示铅笔且交互样式与上报按钮一致', () => {
     setup(1, { mode: 'inline' })
 
-    expect(screen.queryByRole('button', { name: '修改会话标题' })).toBeNull()
     const title = screen.getByText('AI 自动标题')
-    fireEvent.mouseEnter(title.parentElement!)
-    expect(screen.getByRole('button', { name: '修改会话标题' })).toBeInTheDocument()
+    const editButton = screen.getByRole('button', { name: '修改会话标题' })
+    expect(editButton).toHaveClass('h-7', 'w-7', 'rounded-md', 'transition-colors')
+    expect(editButton).toHaveStyle({ background: 'none', color: 'var(--t3)' })
 
-    fireEvent.click(title)
+    fireEvent.mouseEnter(editButton)
+    expect(editButton).toHaveStyle({ background: 'var(--bg3)', color: 'var(--t2)' })
+    fireEvent.mouseLeave(editButton)
+    expect(editButton).toHaveStyle({ background: 'none', color: 'var(--t3)' })
+
+    fireEvent.click(editButton)
     expect(screen.getByRole('textbox')).toHaveValue('AI 自动标题')
     expect(screen.queryByRole('dialog')).toBeNull()
+    expect(title).not.toBeInTheDocument()
   })
 
   test('标题溢出时悬停自动滚动，移开后复位', () => {

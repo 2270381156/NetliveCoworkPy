@@ -1567,7 +1567,7 @@ export function ChatPanel({ sessionId, sse, pendingSession, user, onSessionCreat
             />
             {isCloudSession(session.id) && <CloudBadge />}
           </div>
-          <div className="ml-3 flex flex-shrink-0 items-center gap-1">
+          <div className="ml-1 flex flex-shrink-0 items-center gap-1">
             {/* 工作模式选择器已挪到输入框工具条（新建/进行中都可选），头部不再重复 */}
             <ReportSessionButton sessionId={session.id} />
             {canShowWorkspace && onToggleWorkspace && (

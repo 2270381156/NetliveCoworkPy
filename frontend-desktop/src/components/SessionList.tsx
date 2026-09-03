@@ -927,26 +927,26 @@ function SessionItem({ session, selected, onSelect, onDelete, onTogglePin, onTog
         <EditableSessionTitle
           session={session}
           mode="modal"
-          editOnTitleClick={selected}
           className="text-sm"
           style={{ color: 'var(--t1)', fontWeight: 500 }}
+          trailingActions={(
+            <>
+              {!archived && onTogglePin && (
+                <RowActionBtn title={pinned ? t('sidebar.unpin') : t('sidebar.pin')} onClick={onTogglePin} hoverColor="var(--blue)">
+                  {pinned ? <PinOffIcon size={12} /> : <PinIcon size={12} />}
+                </RowActionBtn>
+              )}
+              {onToggleArchive && (
+                <RowActionBtn title={archived ? t('sidebar.unarchive') : t('sidebar.archive')} onClick={onToggleArchive} hoverColor="var(--blue)">
+                  {archived ? <ArchiveRestoreIcon size={12} /> : <ArchiveIcon size={12} />}
+                </RowActionBtn>
+              )}
+              <RowActionBtn title={t('common.delete')} onClick={onDelete} hoverColor="var(--red)">
+                <Trash2Icon size={12} />
+              </RowActionBtn>
+            </>
+          )}
         />
-        {/* hover 操作：置顶/取消、归档/取消、删除 */}
-        <div className="invisible flex flex-shrink-0 items-center gap-1.5 group-hover:visible">
-          {!archived && onTogglePin && (
-            <RowActionBtn title={pinned ? t('sidebar.unpin') : t('sidebar.pin')} onClick={onTogglePin} hoverColor="var(--blue)">
-              {pinned ? <PinOffIcon size={12} /> : <PinIcon size={12} />}
-            </RowActionBtn>
-          )}
-          {onToggleArchive && (
-            <RowActionBtn title={archived ? t('sidebar.unarchive') : t('sidebar.archive')} onClick={onToggleArchive} hoverColor="var(--blue)">
-              {archived ? <ArchiveRestoreIcon size={12} /> : <ArchiveIcon size={12} />}
-            </RowActionBtn>
-          )}
-          <RowActionBtn title={t('common.delete')} onClick={onDelete} hoverColor="var(--red)">
-            <Trash2Icon size={12} />
-          </RowActionBtn>
-        </div>
       </div>
       <div className="mt-1 flex items-center gap-2">
         <StatusBadge status={session.status} />

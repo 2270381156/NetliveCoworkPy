@@ -15,13 +15,13 @@ export function EditableSessionTitle({
   className,
   style,
   mode = 'inline',
-  editOnTitleClick = true,
+  trailingActions,
 }: {
   session: Session
   className?: string
   style?: React.CSSProperties
   mode?: 'modal' | 'inline'
-  editOnTitleClick?: boolean
+  trailingActions?: React.ReactNode
 }) {
   const qc = useQueryClient()
   const { data: cachedSessions } = useQuery<Session[]>({
@@ -196,8 +196,7 @@ export function EditableSessionTitle({
             <span
               ref={titleViewportRef}
               className="block min-w-0 overflow-hidden whitespace-nowrap"
-              style={{ flex: '0 1 auto', maxWidth: 'calc(100% - 18px)' }}
-              onClick={editOnTitleClick ? begin : undefined}
+              style={{ flex: '1 1 auto', maxWidth: mode === 'modal' ? '100%' : 'calc(100% - 32px)' }}
               title={visibleTitle}
             >
               <span
@@ -216,17 +215,44 @@ export function EditableSessionTitle({
               </span>
             </span>
           )}
-      {hovered && !editing && (
-        <button
-          type="button"
-          aria-label="修改会话标题"
-          title="修改会话标题"
-          className="grid flex-shrink-0 place-items-center"
-          style={{ padding: 1, border: 0, background: 'transparent', color: 'var(--t3)', cursor: 'pointer' }}
-          onClick={begin}
+      {(mode === 'inline' || hovered) && !editing && (
+        <div
+          data-testid={mode === 'modal' ? 'session-title-actions' : undefined}
+          className={mode === 'modal'
+            ? 'absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-1.5 pl-4'
+            : 'flex flex-shrink-0 items-center'}
+          style={mode === 'modal'
+            ? { zIndex: 1, background: 'linear-gradient(90deg, transparent 0, var(--bg3) 16px)' }
+            : undefined}
         >
-          <PencilIcon size={13} />
-        </button>
+          <button
+            type="button"
+            aria-label="修改会话标题"
+            title="修改会话标题"
+            className={mode === 'inline'
+              ? 'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors'
+              : 'grid flex-shrink-0 place-items-center'}
+            style={{
+              padding: mode === 'inline' ? 0 : 1,
+              border: 0,
+              background: mode === 'inline' ? 'none' : 'transparent',
+              color: 'var(--t3)',
+              cursor: 'pointer',
+            }}
+            onClick={begin}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = mode === 'inline' ? 'var(--t2)' : 'var(--blue)'
+              if (mode === 'inline') e.currentTarget.style.background = 'var(--bg3)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--t3)'
+              if (mode === 'inline') e.currentTarget.style.background = 'none'
+            }}
+          >
+            <PencilIcon size={mode === 'inline' ? 15 : 13} />
+          </button>
+          {mode === 'modal' && trailingActions}
+        </div>
       )}
       {modal}
     </div>
