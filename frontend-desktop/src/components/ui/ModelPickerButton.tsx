@@ -33,8 +33,14 @@ export function ModelPickerButton({
   const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number; maxHeight?: number } | null>(null)
 
   const label = useMemo(() => {
-    if (selectedProvider) return selectedModel || selectedProvider
-    // 未显式选择：显示后端默认账号（列表首个 = 种子默认）的真名，而非「默认模型」占位。
+    // ⚠ 所选账号必须**当前还在** providers 里才显示它。后端一个 llm 都没有（或用户把那个
+    //    账号删了）时，selectedProvider 可能是 localStorage 残留的旧名——不校验就会一直
+    //    亮着一个已经不存在的模型。存在才用它，否则回落默认账号 / 占位。
+    if (selectedProvider && providers.some(p => p.name === selectedProvider)) {
+      return selectedModel || selectedProvider
+    }
+    // 未显式选择（或所选已不存在）：显示后端默认账号（列表首个 = 种子默认）的真名。
+    // providers 为空（后端没加载任何 llm）→ null → 外层显示占位，不残留旧模型。
     const def = providers[0]
     return def ? (def.default_model || def.name) : null
   }, [selectedProvider, selectedModel, providers])

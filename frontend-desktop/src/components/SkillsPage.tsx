@@ -479,11 +479,15 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
    * 里的两组**，不是两块——标题仍然只有「当前技能」一个。
    */
   const usableLocal: TileItem[] = useMemo(() => {
+    // 通用页签**不列本地导入**的 skill：这里只呈现"已引用"和"市场里的东西"。
+    // 本地导入的统一去「本地」页签管理，避免同一条在两处都出现、也让通用页签更贴合"市场"。
+    // （cowork 页签仍列归属它的本地 skill + 通用的——那些它确实用得上。）
+    if (cowork === null) return []
     const out: TileItem[] = []
     for (const sk of mine) {
       if (sk.origin !== 'local') continue
-      const ownedHere = cowork ? sk.coworks.includes(cowork) : false
-      // 通用页签只看通用的；cowork 页签看"归属它的"+"通用的"——后者它同样用得上。
+      const ownedHere = sk.coworks.includes(cowork)
+      // cowork 页签看"归属它的"+"通用的"——后者它同样用得上。
       if (!(isCommonSkill(sk.coworks) || ownedHere)) continue
       if (!matches(sk.name, sk.description)) continue
       out.push(tileFromLocal(sk, t, { showFrom: false }))
