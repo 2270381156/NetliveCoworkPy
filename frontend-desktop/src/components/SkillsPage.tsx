@@ -211,6 +211,10 @@ function LocalPanel() {
   })
 
   const agents = useAgents()   // 只用来算归属默认值（见 defaultCoworks）
+  // 只有一个 cowork（或压根没有 cowork 这一层）时，"通用 vs 这个 agent"两个选项指向同一个
+  // 集合，选择本身没有意义 —— 一律跳过归属选择框。现在技能只能上传到通用市场，这个判断也就
+  // 和上传目标一致了。（引用市场那条路早就是这个判断，见 addByKey。）
+  const soleCowork = agents.length <= 1
   // 选完文件先攒着，弹框里问归属，确认了才真导。
   //
   // **归属必须问在导入动作里面**：它是"这个 skill 属于谁"的从属关系。放在列表上方当一个
@@ -244,9 +248,9 @@ function LocalPanel() {
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
-      // 单 agent 且它没有自己的市场：给谁用、传哪个市场都只有一个答案（通用），
-      // 弹选择框纯属添堵 —— 直接按通用导入，跳过那一步。
-      if (soleAgentNoMarket(agents)) {
+      // 只有一个 cowork（或没有 cowork 这一层）：给谁用只有一个答案，弹选择框纯属添堵 ——
+      // 直接按通用导入，跳过那一步。
+      if (soleCowork) {
         importMut.mutate({ file, coworks: [ALL_COWORKS] })
       } else {
         setPendingFile(file)
@@ -327,7 +331,7 @@ function LocalPanel() {
           onPublish={opened.origin === 'local' ? () => publishMut.mutate(opened.skill_id) : undefined}
           publishing={publishMut.isPending}
           publishStatus={publishState?.id === opened.skill_id ? publishState : undefined}
-          onCoworksChange={soleAgentNoMarket(agents)
+          onCoworksChange={soleCowork
             ? undefined
             : coworks => ownerMut.mutate({ skillId: opened.skill_id, coworks })}
           coworksSaving={ownerMut.isPending}
@@ -609,6 +613,8 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
   // 添加**必须**在目录里找到条目：要把 source 和名字传给后端去下载。取消则不用（见上）。
   const byKey = (k: string) => catalog.find(i => keyOf(i) === k)
   const agents = useAgents()
+  // 只有一个 cowork（或没有 cowork 这一层）时，归属选择没有第二个答案 —— 详情里不弹选择框。
+  const soleCowork = agents.length <= 1
   // 引用之前先定归属。
   //
   // 原先归属**固定跟着页签走**（通用页签 → 通用，cowork 页签 → 那个 cowork），
@@ -802,8 +808,8 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
             ? () => { unpullMut.mutate(opened.key); setOpenedKey(null) }
             : undefined}
           unreferencing={unpullMut.isPending}
-          onCoworksChange={opened.kind === 'market' || soleAgentNoMarket(agents)
-            ? undefined                       // 还没引用（无记录），或单 agent 无市场（没得选）
+          onCoworksChange={opened.kind === 'market' || soleCowork
+            ? undefined                       // 还没引用（无记录），或只有一个 cowork（没得选）
             : coworks => ownerMut.mutate({ key: opened.key, coworks })}
           coworksSaving={ownerMut.isPending}
         />
@@ -960,22 +966,11 @@ function tileFromCatalog(
  * 只有一个 cowork 时默认给它 —— 那时「这条 skill 给谁用」只有一个答案，默认成「通用」
  * 反而多一层没意义的概念（通用 = 所有 cowork，而所有 = 这一个）。
  *
- * ⚠ **它只改默认值，不该被用来隐藏选项。** 本地导入时归属还决定**上传到哪个市场**
- * （publish 按归属路由），所以哪怕只有一个 agent，「通用」和「那个 agent」仍是两个
- * 不同的去处，两项都要列出来。真正可以省掉选择的只有「从市场引用」那一步——那里归属
- * 就是「给谁用」，没有第二层含义。
+ * ⚠ **它只改默认值。** 是否**隐藏**归属选择框由 `soleCowork` 决定（见组件内）：
+ * 当前 skill 一律上传到通用市场（publish 不再按归属路由），所以只要用户就一个 cowork，
+ * 「通用」和「那个 agent」指向同一个集合、没有第二层含义，导入/详情都不再弹选择框；
+ * 用户有多个 cowork 时才需要问「给谁用」。
  */
-/** 只有一个 cowork、且它连自己的 skill 市场都没有。
- *
- *  此时"上传到哪个市场""给哪个 cowork 用"都只有一个答案，归属选择框没有可选项 ——
- *  导入、点开详情都不该再弹它。
- *
- *  ⚠ 单 agent 但**有**自己市场时不算：那时仍要区分"传通用还是传它自己的市场"，
- *  选择框得留着（这正是之前"一个 agent 也显示通用/XX"的由来）。 */
-function soleAgentNoMarket(agents: readonly { hasOwnMarket?: boolean }[]): boolean {
-  return agents.length === 1 && agents[0].hasOwnMarket !== true
-}
-
 export function defaultCoworks(agents: readonly { id: string }[]): SkillCoworks {
   return agents.length === 1 ? [agents[0].id] : [ALL_COWORKS]
 }
