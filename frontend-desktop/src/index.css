@@ -90,6 +90,12 @@ body {
   40%           { transform: scale(1.1); opacity: 1; }
 }
 
+/* 过长的会话标题仅在悬停时往返滚动；开头和末尾各停留片刻，便于阅读。 */
+@keyframes session-title-scroll {
+  0%, 15%   { transform: translateX(0); }
+  85%, 100% { transform: translateX(var(--session-title-scroll-distance)); }
+}
+
 /* 骂人彩蛋的收尾提示：一条动画包完整生命周期——进场淡入、停留、到期淡出。
    时长与 ChatPanel 里移除元素的定时器对齐（9s），所以看到的是"自己散掉"而不是
    "啪一下没了"。分两个 state 做淡出也行，但那要多一次渲染和一个额外定时器。 */

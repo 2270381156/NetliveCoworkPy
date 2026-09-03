@@ -41,6 +41,10 @@ class BashReviewModeRequest(BaseModel):
     mode: str
 
 
+class SessionTitleRequest(BaseModel):
+    title: str
+
+
 APPROVE_WORDS = frozenset({"approved", "approve", "yes", "allow", "允许执行"})
 REJECT_WORDS = frozenset({"rejected", "reject", "no", "deny", "拒绝"})
 

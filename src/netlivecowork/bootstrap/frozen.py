@@ -122,6 +122,44 @@ def _bundled_venv_python(exe_dir: str) -> str | None:
     return cand if os.path.isfile(cand) else None
 
 
+def _venv_base_present(venv_dir: str) -> bool:
+    """共享 venv 的【基础解释器】是否仍然存在。
+
+    venv 的 ``Scripts\\python.exe`` 只是个重定向器，真正跑的解释器由 ``pyvenv.cfg`` 指定
+    （3.11+ 写 ``executable = <base python.exe>``，同时保留 ``home = <base 目录>``）。产品改名 /
+    换安装目录后（IPMaster-Cowork → NetLIVE Cowork，安装目录随之从 ...\\Programs\\IPMaster-Cowork
+    变成 ...\\Programs\\NetLIVE Cowork），随 data 目录一起迁移过来的旧 venv 里这两项仍指向**旧安装
+    位置**的 python-runtime——那目录已不存在，于是每个 python/pip 调用都被重定向器打回
+    ``No Python at '...\\IPMaster-Cowork\\...\\python.exe'``。
+
+    只看 ``Scripts\\python.exe`` 在不在（它在，是随 data 迁过来的）会误判成"就绪"并复用，坑正在这。
+    这里读 pyvenv.cfg，确认 base 解释器真的还在；不在 → 视为悬空 venv，需重建/修复。
+    读不到 / 解析不出 base 也当作不可用（正常 venv 一定有这些字段）。
+    """
+    cfg = os.path.join(venv_dir, "pyvenv.cfg")
+    home = ""
+    executable = ""
+    try:
+        with open(cfg, encoding="utf-8") as f:
+            for line in f:
+                key, sep, val = line.partition("=")
+                if not sep:
+                    continue
+                k = key.strip().lower()
+                if k == "executable":
+                    executable = val.strip()
+                elif k == "home":
+                    home = val.strip()
+    except OSError:
+        return False
+    # executable 直接指向 base 的 python.exe（更精确）；缺它就退回 home 目录 + python.exe。
+    if executable:
+        return os.path.isfile(executable)
+    if home:
+        return os.path.isfile(os.path.join(home, "python.exe"))
+    return False
+
+
 def _ensure_shared_venv(bundled_python: str) -> None:
     """打包态：确保「全应用共享 venv」存在于 ``<NLC_DATA_DIR>/venv``（用随包 python 建，
     复用其解释器/标准库；只有 site-packages 是自己的、可写、跨更新保留），并把它头插进
@@ -140,9 +178,24 @@ def _ensure_shared_venv(bundled_python: str) -> None:
     scripts = os.path.join(venv_dir, "Scripts")   # Windows 布局（打包只在 Win）
     venv_py = os.path.join(scripts, "python.exe")
 
-    if not os.path.isfile(venv_py):
+    # 需要（重）建 venv 的两种情形：
+    #   1. 压根没有（首次启动） —— venv_py 不存在；
+    #   2. 有，但 base 解释器已不在（产品改名/换目录后随 data 迁来的悬空 venv，见 _venv_base_present）。
+    # 情形 2 直接对着**已存在**的 venv 目录重跑 `python -m venv`：它会用当前随包 runtime 重写
+    # pyvenv.cfg 的 home/executable、刷新 Scripts 里的重定向器，修好路径——**且默认不清 site-packages**，
+    # 用户/skill 之前 pip 装的包得以保留（--clear 才会清，这里不加）。
+    missing = not os.path.isfile(venv_py)
+    stale = (not missing) and (not _venv_base_present(venv_dir))
+    if missing or stale:
         os.makedirs(data_dir, exist_ok=True)
-        print(f"[NetLIVE Cowork] creating shared venv at {venv_dir} …", flush=True)
+        if stale:
+            print(
+                f"[NetLIVE Cowork] shared venv at {venv_dir} points to a missing base interpreter "
+                f"(likely after product rename/move); rebuilding against {bundled_python} …",
+                flush=True,
+            )
+        else:
+            print(f"[NetLIVE Cowork] creating shared venv at {venv_dir} …", flush=True)
         try:
             subprocess.run(
                 [bundled_python, "-m", "venv", venv_dir],

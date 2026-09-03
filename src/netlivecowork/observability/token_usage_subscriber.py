@@ -46,6 +46,9 @@ def report_token_usage(
                 # 载荷里这个 session_id 是**拼出来的上报标识**（带 desktop: 前缀与轮次），
                 # 不是原始会话 id。归属查的是原始那个，见下面的 session_id= 参数。
                 "session_id": f"desktop:{session_id}:{turn_seq}",
+                # 这次用量属于哪个 cowork（= agent），供云端按 agent 分账。查的是**原始** session_id。
+                # 云端 DTO 标了 @JsonIgnoreProperties(ignoreUnknown=true)，还没加这个字段的云端会安全忽略。
+                "cowork": _cowork_of(session_id),
                 "input_tokens": prompt_tokens,
                 "output_tokens": completion_tokens,
                 "llm_account": llm_account or "",
@@ -56,6 +59,20 @@ def report_token_usage(
         _notify()
     except Exception:
         logger.exception("report_token_usage failed for session %s turn %s", session_id, turn_seq)
+
+
+def _cowork_of(session_id: str) -> str:
+    """这次用量属于哪个 cowork（= agent）。与 host_runtime._reporting_labels_of 同源：问 scope。
+
+    ⚠ **绝不抛**：打点不能影响主流程；查不到（scope 没装、会话不在表里）就返回空串。
+    """
+    try:
+        from netlivecowork.cowork.runtime import get_scope
+
+        scope = get_scope()
+        return scope.cowork_id_of(session_id) if scope is not None else ""
+    except Exception:
+        return ""
 
 
 def _notify() -> None:

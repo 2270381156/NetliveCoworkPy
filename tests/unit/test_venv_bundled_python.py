@@ -34,6 +34,49 @@ def test_bundled_venv_python_absent(tmp_path):
     assert _run._bundled_venv_python(str(tmp_path)) is None
 
 
+def _make_venv(tmp_path, *, base_dir, base_exists, key="executable"):
+    """造一个最小 venv 目录：Scripts\\python.exe（重定向器占位）+ pyvenv.cfg 指向 base。
+    base_exists=False 时不真的建出 base 的 python.exe，模拟改名/换目录后基础解释器悬空。"""
+    venv = tmp_path / "venv"
+    (venv / "Scripts").mkdir(parents=True)
+    (venv / "Scripts" / "python.exe").write_text("#!redirector")
+    base = tmp_path / base_dir
+    base.mkdir()
+    base_py = base / "python.exe"
+    if base_exists:
+        base_py.write_text("#!fake-base")
+    line = f"{key} = {base_py}" if key == "executable" else f"{key} = {base}"
+    (venv / "pyvenv.cfg").write_text(
+        f"home = {base}\ninclude-system-site-packages = false\nversion = 3.13.12\n"
+        f"{line}\n"
+    )
+    return venv
+
+
+def test_venv_base_present_when_base_exists(tmp_path):
+    venv = _make_venv(tmp_path, base_dir="python-runtime", base_exists=True)
+    assert _run._venv_base_present(str(venv)) is True
+
+
+def test_venv_base_absent_when_base_missing(tmp_path):
+    # 悬空 venv：pyvenv.cfg 里 base 指向的 python.exe 不存在（旧安装目录已改名/删除）。
+    venv = _make_venv(tmp_path, base_dir="python-runtime", base_exists=False)
+    assert _run._venv_base_present(str(venv)) is False
+
+
+def test_venv_base_absent_when_no_cfg(tmp_path):
+    venv = tmp_path / "venv"
+    (venv / "Scripts").mkdir(parents=True)
+    (venv / "Scripts" / "python.exe").write_text("#!redirector")
+    assert _run._venv_base_present(str(venv)) is False
+
+
+def test_venv_base_falls_back_to_home_key(tmp_path):
+    # 老 venv 只有 home、没有 executable：退回 home 目录 + python.exe 判断。
+    venv = _make_venv(tmp_path, base_dir="python-runtime", base_exists=True, key="home")
+    assert _run._venv_base_present(str(venv)) is True
+
+
 def _fake_frozen(monkeypatch, tmp_path):
     """把 bootstrap.frozen 装成「冻结态」：sys.frozen/_MEIPASS/executable 指到 tmp_path，
     并用一份 os.environ 副本隔离 prepare() 对 os.environ 的写入（避免泄漏到其它测试）。"""

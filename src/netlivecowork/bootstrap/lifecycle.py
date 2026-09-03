@@ -131,12 +131,16 @@ def _start_mcp_prewarm(mcp_manager: Any) -> asyncio.Task:
     async def _run() -> None:
         try:
             await mcp_manager.prewarm_all()
+            # 预连接之后紧接着做一次连通性自检：套件下发的 MCP 已经连上（或连不上），
+            # 这里把每个的工具清单 / 失败原因打进启动日志。放在同一后台 task 里，同样不挡
+            # lifespan；list() 复用 prewarm 刚建好的连接，几乎不额外增加耗时。
+            await mcp_manager.probe_transient_and_log()
         except asyncio.CancelledError:
             raise
         except Exception:
             # 失败不致命（与 prewarm_all 内部同策）：这里再兜一层，避免逃逸成
             # "Task exception was never retrieved" 的未捕获异常噪音。
-            logger.exception("MCP: 后台预连接失败，转由 agent 路径惰性重连")
+            logger.exception("MCP: 后台预连接/连通性自检失败，转由 agent 路径惰性重连")
 
     return asyncio.create_task(_run(), name="mcp-prewarm")
 

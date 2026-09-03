@@ -1,8 +1,8 @@
 {
   "netcoworkBaseUrl": "https://ipmastercowork.gts.huawei.com",
   "substrateBaseUrl": "https://ipmastercowork.gts.huawei.com/substrate",
-  "feedUrl": "https://ipmastercowork.gts.huawei.com/update",
-  "telemetryUrl": "https://ipmastercowork.gts.huawei.com/update",
+  "feedUrl": "https://ipmastercowork.gts.huawei.com/update/ncw",
+  "telemetryUrl": "https://ipmastercowork.gts.huawei.com/update/ncw",
   "channel": "stable",
   "authMode": "w3",
   "w3BaseUrl": "https://uniportal.huawei.com",

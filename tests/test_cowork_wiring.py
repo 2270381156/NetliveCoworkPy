@@ -203,3 +203,63 @@ def test_setup_cowork_survives_a_reconcile_explosion(tmp_path, monkeypatch):
 
     _setup_cowork()                     # 不抛
     assert cowork_runtime.get_policy() is not None, "对账炸了，策略照样要建起来"
+
+
+# ── 套件下发 MCP 的连通性自检 ─────────────────────────────────────────────────
+
+class _Reg:
+    def register_capability(self, p, **kw): pass
+    def deregister_capability(self, *a, **kw): pass
+
+
+class _EmptyStore:
+    def load_all(self): return []
+
+
+def test_register_transient_records_the_name():
+    """套件下发（不落盘）注册成功的 server 要被记下来，供启动连通性自检定位。"""
+    from netlivecowork.providers.capability.mcp.manager import MCPProviderManager
+
+    m = MCPProviderManager(_EmptyStore(), _Reg())
+    cfg = type("C", (), {"name": "kb", "transport": "http"})()
+    assert m.register_transient(cfg) is True
+    assert "kb" in m._transient_names
+    # 同名已在册 → 跳过、不重复记
+    assert m.register_transient(cfg) is False
+
+
+def test_probe_logs_tools_and_survives_a_dead_server(caplog):
+    """连通性自检：能连上的把工具名打进日志；连不上的只 warning、不抛、不连累其它。"""
+    import asyncio
+    import logging
+
+    from netlivecowork.providers.capability.mcp.manager import MCPProviderManager
+
+    class _Cap:
+        def __init__(self, n): self.name = n; self.description = ""
+
+    class _Good:
+        connection_status = "CONNECTED"
+        _cfg = type("C", (), {"transport": "http", "url": "http://ok/mcp", "command": None})()
+        def __init__(self): self._capabilities_cache = None
+        async def start(self): return True
+        async def list(self, ctx):
+            self._capabilities_cache = [_Cap("alpha"), _Cap("beta")]
+            return self._capabilities_cache
+
+    class _Dead(_Good):
+        connection_status = "CONNECTING"
+        _cfg = type("C", (), {"transport": "http", "url": "http://dead/mcp", "command": None})()
+        async def start(self): return False   # 连不上（超时/被拒）
+
+    m = MCPProviderManager(_EmptyStore(), _Reg())
+    m._active["good"] = _Good(); m._transient_names.add("good")
+    m._active["dead"] = _Dead(); m._transient_names.add("dead")
+
+    with caplog.at_level(logging.INFO):
+        asyncio.run(m.probe_transient_and_log())   # 不抛
+
+    text = caplog.text
+    assert "alpha, beta" in text, "连上的应把工具名打进日志"
+    assert "http://ok/mcp" in text
+    assert "[dead]" in text and "连不上" in text, "连不上的应记下来、但不抛、不连累其它"

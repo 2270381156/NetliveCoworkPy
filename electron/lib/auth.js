@@ -153,7 +153,11 @@ function sessionWithFreshTokenUsageEpoch(accessToken, user, options) {
 // 让上报归属 / 重试队列 / 登录切换闸门在两种登录模式下按同一套规则运转。
 // accessToken（可选）为 local-token 换取的云端 JWT，存入 access_token 后
 // getToken / tokenUsageContextFromSession 会优先用它做鉴权与上报。
-function w3SessionWithFreshTokenUsageEpoch(uid, user, options, accessToken) {
+// uuid（可选，W3 企业永久人员 id，换工号不变）登录时顺手捕获、存着备用：
+// 平时不出场，只在换工号那一刻用来认人（见 netcowork
+// doc/IDENTITY_SURROGATE_ANCHOR.md §2）。与 accessToken 一样"有才写"，
+// 空时保持旧会话形状不变。
+function w3SessionWithFreshTokenUsageEpoch(uid, user, options, accessToken, uuid) {
   const session = {
     uid,
     user,
@@ -161,6 +165,7 @@ function w3SessionWithFreshTokenUsageEpoch(uid, user, options, accessToken) {
     token_usage_epoch: createTokenUsageEpoch(user, options),
   };
   if (accessToken) session.access_token = accessToken;
+  if (uuid) session.uuid = uuid;
   return session;
 }
 
@@ -426,9 +431,9 @@ async function startLoginW3({ w3Config, pythonBackendUrl, appDataDir, devSkipAut
     // 6. 存储会话 (w3: true 标记; access_token 为 local-token 换取的云端 JWT)。
     // 主页面仍在等待 auth-login IPC，返回 user 后 LoginGate 直接进入首页，无需重新加载。
     saveSession(appDataDir, w3SessionWithFreshTokenUsageEpoch(
-      data.uid, data.user, undefined, data.access_token,
+      data.uid, data.user, undefined, data.access_token, data.uuid,
     ));
-    log(`W3 会话已保存，hasUser=${!!data.user}, hasJwt=${!!data.access_token}`);
+    log(`W3 会话已保存，hasUser=${!!data.user}, hasJwt=${!!data.access_token}, hasUuid=${!!data.uuid}`);
     return data.user;
   } finally {
     // OAuth 完成、失败或后端校验异常时都移除 W3 视图；不导航主应用页面。
@@ -443,7 +448,7 @@ async function startLoginW3({ w3Config, pythonBackendUrl, appDataDir, devSkipAut
 // W3 模式下获取当前用户信息（启动时会话恢复）。
 // 调用云端已有的 POST /api/auth/precheck 接口，入参 { username: uid(工号) }，
 // 响应 NEEDS_PASSWORD → 在白名单，放行；NOT_ALLOWED → 清除会话，回登录页。
-async function getSessionW3({ cloudBaseUrl, appDataDir, devSkipAuth, logFn,
+async function getSessionW3({ appDataDir, devSkipAuth, logFn,
                               pythonBackendUrl, fetchImpl = httpFetch }) {
   if (devSkipAuth) return DEV_USER;
   const s = loadSession(appDataDir);
@@ -474,34 +479,13 @@ async function getSessionW3({ cloudBaseUrl, appDataDir, devSkipAuth, logFn,
     })();
   };
 
-  if (!cloudBaseUrl) {
-    refreshJwtInBackground();
-    return s.user;
-  }
-  let r;
-  try {
-    r = await fetchImpl(`${cloudBaseUrl}/api/auth/precheck`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: s.uid }),
-    });
-  } catch (e) {
-    if (logFn) {
-      const c = e && e.cause ? (e.cause.code || e.cause.message || String(e.cause)) : (e && e.message) || e;
-      logFn(`/api/auth/precheck 校验失败，回退本地放行: ${c}`);
-    }
-    return s.user;   // 云端不可达 → 回退本地放行
-  }
-  // 检查白名单状态：NEEDS_PASSWORD = 在白名单，其他(含 NOT_ALLOWED) = 不在
-  try {
-    const data = await r.json();
-    if (data && data.status === 'NEEDS_PASSWORD') {
-      refreshJwtInBackground();
-      return s.user;
-    }
-  } catch { /* 响应体非 JSON，按失败处理 */ }
-  clearSession(appDataDir);
-  return null;
+  // 设备级永久访问：本地存在有效 W3 会话即视为"此人授权过"——auth.bin 走 OS 密钥库
+  // 加密，只有合法登录过才写得进，会话存在本身就是授权凭据。恢复时**不再回云端重校
+  // 白名单**，桌面使用权一旦授权即永久保留（设计：设备级）。agent 权限被收回只让对应
+  // 会话变只读（后端 resume/续聊 403 + 前端按可用 cowork 推导只读），历史永远可看。
+  // 云端仅用于 best-effort 续取 JWT（供上报/上传），失败不阻断访问。
+  refreshJwtInBackground();
+  return s.user;
 }
 
 // 启动时取 session + 云端吊销检查（401→登出；网络不可达→回退本地 exp）。
@@ -510,7 +494,7 @@ async function getSessionW3({ cloudBaseUrl, appDataDir, devSkipAuth, logFn,
 async function getSession({ cloudBaseUrl, appDataDir, devSkipAuth, logFn,
                             useW3 = false, pythonBackendUrl, fetchImpl = httpFetch }) {
   if (useW3) {
-    return getSessionW3({ cloudBaseUrl, appDataDir, devSkipAuth, logFn, pythonBackendUrl, fetchImpl });
+    return getSessionW3({ appDataDir, devSkipAuth, logFn, pythonBackendUrl, fetchImpl });
   }
   if (devSkipAuth) return DEV_USER;
   const s = loadSession(appDataDir);

@@ -144,6 +144,39 @@ source/remote_id 的通用与专属条目因此是**两条不同的引用**，`i
 云端技能不在旧索引里，大模型能进入却报 `SKILL_NOT_FOUND`。所以登录、拉市场目录、引用 / 删除引用后，都会主动让这份路由索引失效、下次用到时按当前状态重建；预置协调则只在
 `ReconcileResult.changed`（原子提交成功且有变更）时失效索引。
 
+**③ 上传（把本地技能发布回市场）**：本地技能卡片上的「上传」按钮 → `POST /skills/{id}/publish`。
+
+- **现状：上传写死到全局 `cowork` 市场那一家，不看归属。** 端点固定取
+  `deps.get_cowork_skill_service()`（= `build_adapter("cowork")` = pull-server，`NLC_SKILL_PULL_SERVER_URL`）。
+  原因不是随意写死：**只有 `cowork` 一家支持上传**——`adapters/base.py` 的
+  `import_to_remote` 基类默认抛 `UNSUPPORTED`，只有 `CoworkMarketAdapter` 覆盖实现了真上传；
+  `mythos` 与各 cowork **自带的**市场都没有上传接口。所以能收上传的目标唯一，无从按归属选。
+- 归属选择框（前端 `CoworkChooser`）此刻只决定**「谁能用」**，与上传去向无关。UI 提示语（`skills.ownerHint`）
+  据此写明「上传目前统一发布到通用市场」。
+
+**将来某个 cowork 自带的市场支持上传了，怎么扩展**（基础设施大半已就位，别重造）：
+
+1. **市场服务端 + adapter**：那家市场加上传接口后，对应 adapter 实现 `import_to_remote`
+   （不再抛 `UNSUPPORTED`）。mythos 形态就在 `MythosMarketAdapter` 实现；若那个 cowork 改用
+   pull-server 形态，直接复用 `CoworkMarketAdapter`。
+2. **`publish` 端点改成按归属路由**（`api/skills.py` 的 `publish_local_skill` + `deps.py`）：
+   读 skill 归属（`references/local_owners` 的 `labels_of`）→ 归属通用/多个则发全局 `cowork`（回落，同现状）；
+   归属**单个** cowork 就用 `services/market.py` 已有的 **`_adapters_for(cowork)`** 拿那个 cowork
+   自带的市场 adapter 上传。**路由不用新造**——拉取（catalog/pull）早就用 `_adapters_for` 按 cowork
+   路由了，上传复用同一套。目标 adapter 仍抛 `UNSUPPORTED` 时，回落通用或报「该市场暂不支持上传」（见下）。
+3. **能力暴露**：`/coworks` 现返回 `has_own_market`（有没有自带市场）；再细化一个「市场**支持上传**吗」
+   （adapter 自报，或 `/coworks` 多返回 `market_accepts_upload`），供前端决定提示与是否隐藏选择框。
+4. **前端（小改）**：归属选择框已在，不动；`skills.ownerHint` 文案改回「归属也决定上传到哪个市场」；
+   可选：上传前提示「将发布到 X 市场」；`soleAgentNoMarket` 的隐藏判断可细化成「市场不支持上传才隐藏」。
+
+**动手前先拍板的三个产品决策**：① 归属**多个** cowork 的技能，上传发到哪（每家都发 / 只发通用）；
+② 归属某 cowork 但那家市场**还不支持上传** → 回落通用还是直接报错；③ 各家市场鉴权/creator 不同，
+上传带哪个 token。
+
+> 一句话：**路由（`_adapters_for`）和「支不支持上传」的契约（`UNSUPPORTED`）都现成**，核心工作量就是把
+> `publish` 从「写死全局 cowork」改成「读归属 → 走 `_adapters_for` → 目标 adapter 实现上传」，前端只是
+> 文案和一个能力字段。不是大工程。
+
 ---
 
 ## 5. 执行环境

@@ -85,6 +85,8 @@ class Settings:
     skills_dir: str | None
     agents_dir: str | None
     data_dir: str | None
+    #: 上一代 agent id（迁移来的历史会话归属它，如 ipmaster）。派生品牌/无历史时为 None。
+    legacy_agent_id: str | None
     drawing_engine_dir: str | None
     drawing_engine_node_executable: str | None
     watch_interval: float
@@ -181,6 +183,7 @@ class Settings:
             skills_dir=_str("NLC_SKILLS_DIR", None),
             agents_dir=_str("NLC_AGENTS_DIR", None),
             data_dir=_str("NLC_DATA_DIR", None),
+            legacy_agent_id=_str("NLC_LEGACY_AGENT_ID", None),
             drawing_engine_dir=_str("NLC_DRAWING_ENGINE_DIR", None),
             drawing_engine_node_executable=_str("NLC_DRAWING_ENGINE_NODE_EXECUTABLE", None),
             watch_interval=_float("NLC_WATCH_INTERVAL", 5.0),

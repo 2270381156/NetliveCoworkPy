@@ -115,7 +115,30 @@ def test_readonly_is_derived_not_stored(tmp_path):
         "套件装回来，会话自己就该活过来——没有任何标记要清")
 
 
-def test_a_master_session_is_never_readonly(tmp_path):
+def test_a_master_session_is_exempt_without_legacy_configured(tmp_path, monkeypatch):
+    """没配 legacy_agent_id（派生品牌 / 无历史）时，母版会话仍一律豁免——向后兼容。"""
+    monkeypatch.setattr("netlivecowork.config.get_settings",
+                        lambda: type("S", (), {"legacy_agent_id": None})())
+    install(tmp_path, "ipmaster")
+    cowork_runtime.setup(tmp_path)
+    assert cowork_bridge.is_readonly(f"agent:{MASTER_ID}") is False
+
+
+def test_a_master_session_is_readonly_when_legacy_agent_uninstalled(tmp_path, monkeypatch):
+    """**任务3**：agent 上线前的历史会话（agent:default）归属上一代 agent（legacy）。
+    用户没有那个 cowork 的权限时（这里装了 coremaster、没装 ipmaster），这些历史会话
+    该归档（只读），而不是一直保持正常——此前一律豁免导致"无任何权限时历史会话仍正常"。"""
+    monkeypatch.setattr("netlivecowork.config.get_settings",
+                        lambda: type("S", (), {"legacy_agent_id": "ipmaster"})())
+    install(tmp_path, "coremaster")          # 装了别的，唯独没装 legacy(ipmaster)
+    cowork_runtime.setup(tmp_path)
+    assert cowork_bridge.is_readonly(f"agent:{MASTER_ID}") is True
+
+
+def test_a_master_session_is_not_readonly_when_legacy_agent_installed(tmp_path, monkeypatch):
+    """用户有 legacy agent（ipmaster）的权限时，历史会话照常可继续。"""
+    monkeypatch.setattr("netlivecowork.config.get_settings",
+                        lambda: type("S", (), {"legacy_agent_id": "ipmaster"})())
     install(tmp_path, "ipmaster")
     cowork_runtime.setup(tmp_path)
     assert cowork_bridge.is_readonly(f"agent:{MASTER_ID}") is False

@@ -73,6 +73,123 @@ _DEFAULT_SKILLS = [
         "updater": "a001",
         "updated_time": "2026-06-22T08:00:00.000+00:00",
     },
+    {
+        "skill_id": 1200,
+        "skill_name": "topology-audit",
+        "display_name": {"default": "拓扑巡检", "zh_CN": "", "en_US": ""},
+        "description": {"default": "拓扑巡检 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "c30025961",
+        "updated_time": "2026-06-10T10:00:00.000+00:00",
+        "downloadCount": 512,
+    },
+    {
+        "skill_id": 1201,
+        "skill_name": "bgp-troubleshoot",
+        "display_name": {"default": "BGP 排障", "zh_CN": "", "en_US": ""},
+        "description": {"default": "BGP 排障 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "c30025961",
+        "updated_time": "2026-06-11T10:00:00.000+00:00",
+        "downloadCount": 348,
+    },
+    {
+        "skill_id": 1202,
+        "skill_name": "config-diff",
+        "display_name": {"default": "配置比对", "zh_CN": "", "en_US": ""},
+        "description": {"default": "配置比对 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "a001",
+        "updated_time": "2026-06-12T10:00:00.000+00:00",
+        "downloadCount": 1207,
+    },
+    {
+        "skill_id": 1203,
+        "skill_name": "log-digest",
+        "display_name": {"default": "日志摘要", "zh_CN": "", "en_US": ""},
+        "description": {"default": "日志摘要 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "a001",
+        "updated_time": "2026-06-13T10:00:00.000+00:00",
+    },
+    {
+        "skill_id": 1204,
+        "skill_name": "vlan-planner",
+        "display_name": {"default": "VLAN 规划", "zh_CN": "", "en_US": ""},
+        "description": {"default": "VLAN 规划 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "w00812",
+        "updated_time": "2026-06-14T10:00:00.000+00:00",
+        "downloadCount": 96,
+    },
+    {
+        "skill_id": 1205,
+        "skill_name": "srv6-migrate",
+        "display_name": {"default": "SRv6 迁移", "zh_CN": "", "en_US": ""},
+        "description": {"default": "SRv6 迁移 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "w00812",
+        "updated_time": "2026-06-15T10:00:00.000+00:00",
+        "downloadCount": 0,
+    },
+    {
+        "skill_id": 1206,
+        "skill_name": "cli-cheatsheet",
+        "display_name": {"default": "命令速查", "zh_CN": "", "en_US": ""},
+        "description": {"default": "命令速查 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "w00812",
+        "updated_time": "2026-06-16T10:00:00.000+00:00",
+    },
+    {
+        "skill_id": 1207,
+        "skill_name": "mpls-lsp-check",
+        "display_name": {"default": "LSP 校验", "zh_CN": "", "en_US": ""},
+        "description": {"default": "LSP 校验 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "lty0417",
+        "updated_time": "2026-06-17T10:00:00.000+00:00",
+        "downloadCount": 73,
+    },
+    {
+        "skill_id": 1208,
+        "skill_name": "subnet-calc",
+        "display_name": {"default": "子网计算", "zh_CN": "", "en_US": ""},
+        "description": {"default": "子网计算 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "lty0417",
+        "updated_time": "2026-06-18T10:00:00.000+00:00",
+        "downloadCount": 2048,
+    },
+    {
+        "skill_id": 1209,
+        "skill_name": "device-inventory",
+        "display_name": {"default": "设备清点", "zh_CN": "", "en_US": ""},
+        "description": {"default": "设备清点 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "lty0417",
+        "updated_time": "2026-06-19T10:00:00.000+00:00",
+    },
+    {
+        "skill_id": 1210,
+        "skill_name": "acl-linter",
+        "display_name": {"default": "ACL 检查", "zh_CN": "", "en_US": ""},
+        "description": {"default": "ACL 检查 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "c30025961",
+        "updated_time": "2026-06-20T10:00:00.000+00:00",
+        "downloadCount": 15,
+    },
+    {
+        "skill_id": 1211,
+        "skill_name": "qos-template",
+        "display_name": {"default": "QoS 模板", "zh_CN": "", "en_US": ""},
+        "description": {"default": "QoS 模板 的示例 skill（mock）", "zh_CN": "", "en_US": ""},
+        "tag_names": ["IPmaster_Baseline"],
+        "updater": "a001",
+        "updated_time": "2026-06-21T10:00:00.000+00:00",
+        "downloadCount": 634,
+    },
 ]
 
 # 下载会返回空 body 的 skill id（模拟"id 实际对应文件为空"）。
@@ -84,6 +201,20 @@ _LABEL = os.environ.get("MOCK_MYTHOS_LABEL", "").strip()
 if _LABEL:
     for _s in _DEFAULT_SKILLS:
         _s["skill_name"] = f"{_LABEL}-{_s['skill_name']}"
+        # display_name 也要加 —— 界面上显示的是它，只改 skill_name 的话
+        # 标签根本看不见，“分得清是哪一家”这个目的就没达到。
+        _d = _s.get("display_name")
+        if isinstance(_d, dict) and _d.get("default"):
+            _d["default"] = f"[{_LABEL}] {_d['default']}"
+
+# 演示"市场没有下载量/上传时间字段时，前端不显示对应排序"。
+# 各 cowork 自带的市场未必回这两个字段，这里用环境变量模拟整列缺失。
+if os.environ.get("MOCK_MYTHOS_NO_DOWNLOADS"):
+    for _s in _DEFAULT_SKILLS:
+        _s.pop("downloadCount", None)
+if os.environ.get("MOCK_MYTHOS_NO_TIME"):
+    for _s in _DEFAULT_SKILLS:
+        _s.pop("updated_time", None)
 
 _BY_ID = {s["skill_id"]: s for s in _DEFAULT_SKILLS}
 

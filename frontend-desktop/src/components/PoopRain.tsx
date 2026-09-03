@@ -50,8 +50,19 @@ function makeBurst(seed: number): Splat[] {
 export function PoopRain({ trigger }: { trigger: number }) {
   const [splats, setSplats] = useState<Splat[]>([])
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // ⚠ 只在 trigger **真正递增**时放，不在挂载时放。
+  //
+  // trigger 是个只增计数器（骂一次 +1）。ChatPanel 里新建会话页与会话区是两个互斥分支、
+  // 各有一个 PoopRain：骂完发出 query → 切到会话区 → 那边的 PoopRain 首次挂载时 trigger
+  // 已 >0，旧代码只挡 trigger==0，于是又放一波；下次切回新建会话页同理。用户骂一次被扔好几次。
+  //
+  // 用 ref 记住上次放过的值，**初始 = 挂载那刻的 trigger**（相等 → 是挂载/切视图，不放）；
+  // 只有 trigger 比记住的值新（真的又骂了一次）才放。
+  const lastTrigger = useRef(trigger)
 
   useEffect(() => {
+    if (trigger === lastTrigger.current) return
+    lastTrigger.current = trigger
     if (!trigger) return
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
 

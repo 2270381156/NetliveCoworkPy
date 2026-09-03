@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2Icon, SearchIcon, PackageIcon, ZapIcon, ChevronLeftIcon } from 'lucide-react'
-import { skillsApi, ALL_COWORKS, catalogReferenceId, isCommonSkill } from '@/api/skills'
+import { Trash2Icon, SearchIcon, PackageIcon, ZapIcon, ChevronLeftIcon, ArrowUpDownIcon, XIcon, UserIcon } from 'lucide-react'
+import { skillsApi, ALL_COWORKS, isCommonSkill } from '@/api/skills'
 import type { LocalSkill, RemoteCatalogItem, SkillCoworks } from '@/api/skills'
 import { useAgents } from '@/agents/useAgents'
 import { Pager, SkillTile, TileGrid, paginate, useTileGrid, type TileItem } from '@/components/SkillTile'
@@ -244,10 +244,14 @@ function LocalPanel() {
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
-      setPendingFile(file)
-      // 每次都回到默认，不继承上一次的选择。只有一个 cowork 时默认就是它 ——
-      // 那时"给谁用"只有一个答案，默认成"通用"反而多一层没意义的概念。
-      setPendingCoworks(defaultCoworks(agents))
+      // 单 agent 且它没有自己的市场：给谁用、传哪个市场都只有一个答案（通用），
+      // 弹选择框纯属添堵 —— 直接按通用导入，跳过那一步。
+      if (soleAgentNoMarket(agents)) {
+        importMut.mutate({ file, coworks: [ALL_COWORKS] })
+      } else {
+        setPendingFile(file)
+        setPendingCoworks(defaultCoworks(agents))
+      }
     }
     e.target.value = ''
   }
@@ -323,7 +327,9 @@ function LocalPanel() {
           onPublish={opened.origin === 'local' ? () => publishMut.mutate(opened.skill_id) : undefined}
           publishing={publishMut.isPending}
           publishStatus={publishState?.id === opened.skill_id ? publishState : undefined}
-          onCoworksChange={coworks => ownerMut.mutate({ skillId: opened.skill_id, coworks })}
+          onCoworksChange={soleAgentNoMarket(agents)
+            ? undefined
+            : coworks => ownerMut.mutate({ skillId: opened.skill_id, coworks })}
           coworksSaving={ownerMut.isPending}
         />
       )}
@@ -473,11 +479,15 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
    * 里的两组**，不是两块——标题仍然只有「当前技能」一个。
    */
   const usableLocal: TileItem[] = useMemo(() => {
+    // 通用页签**不列本地导入**的 skill：这里只呈现"已引用"和"市场里的东西"。
+    // 本地导入的统一去「本地」页签管理，避免同一条在两处都出现、也让通用页签更贴合"市场"。
+    // （cowork 页签仍列归属它的本地 skill + 通用的——那些它确实用得上。）
+    if (cowork === null) return []
     const out: TileItem[] = []
     for (const sk of mine) {
       if (sk.origin !== 'local') continue
-      const ownedHere = cowork ? sk.coworks.includes(cowork) : false
-      // 通用页签只看通用的；cowork 页签看"归属它的"+"通用的"——后者它同样用得上。
+      const ownedHere = sk.coworks.includes(cowork)
+      // cowork 页签看"归属它的"+"通用的"——后者它同样用得上。
       if (!(isCommonSkill(sk.coworks) || ownedHere)) continue
       if (!matches(sk.name, sk.description)) continue
       out.push(tileFromLocal(sk, t, { showFrom: false }))
@@ -527,11 +537,47 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
   const [pgAdd, setPgAdd] = usePage(q)
   const addGrid = useTileGrid()
 
-  /** 能加的：这个市场里还没引的。 */
-  const addable: TileItem[] = useMemo(
-    () => filtered.filter(i => !i.is_pulled).map(i => tileFromCatalog(i, marketName, false)),
-    [filtered, marketName],
+  // 市场里动辄几十条，光靠搜索框得先知道自己要找什么。
+  //
+  // 排序与作者只作用在下面「技能市场」那一组（还没引的）：上面已安装的那组是"我的东西"，
+  // 被作者筛掉反而让人以为丢了。控件就挂在那一组的标题行上，作用域一目了然。
+  const [sortBy, setSortBy] = useState<'default' | 'downloads'>('default')
+  const [author, setAuthor] = useState('')
+
+  /** 市场组里出现过的作者（去重）—— 筛选框的选项。 */
+  const authors = useMemo(() => {
+    const seen = new Set<string>()
+    for (const i of catalog) if (!i.is_pulled && i.updater) seen.add(i.updater)
+    return [...seen].sort((a, b) => a.localeCompare(b))
+  }, [catalog])
+
+  // 各 cowork 自带的市场未必回下载量 / 上传时间（字段可能整列缺失）。
+  // **数据里没有的排序就别提供** —— 摆一个永远排不动的"下载量"按钮只会让人以为坏了。
+  const hasDownloads = useMemo(
+    () => catalog.some(i => !i.is_pulled && i.download_count != null),
+    [catalog],
   )
+  const hasCreateTime = useMemo(
+    () => catalog.some(i => !i.is_pulled && !!i.create_time),
+    [catalog],
+  )
+
+  /** 能加的：这个市场里还没引的。 */
+  const addable: TileItem[] = useMemo(() => {
+    let list = filtered.filter(i => !i.is_pulled)
+    // 模糊匹配：输入框允许打片段（datalist 只是建议），精确相等会让打一半的输入筛不出东西。
+    if (author.trim()) {
+      const a = author.trim().toLowerCase()
+      list = list.filter(i => (i.updater || '').toLowerCase().includes(a))
+    }
+    if (sortBy === 'downloads') list = [...list].sort(byDownloadsDesc)
+    return list.map(i => tileFromCatalog(i, marketName, false))
+  }, [filtered, marketName, author, sortBy])
+  // 换了排序/作者却停在第 3 页，看到的是一片空白。
+  useEffect(() => { setPgAdd(1) }, [sortBy, author, setPgAdd])
+  // 这个市场没有下载量却停在"按下载量"（上个市场切过来的残留）→ 复位，否则按不存在的字段排。
+  useEffect(() => { if (!hasDownloads && sortBy === 'downloads') setSortBy('default') }, [hasDownloads, sortBy])
+
   const nothingAtAll = usable.length === 0 && addable.length === 0 && catalog.length === 0
 
   // 点开的那一条。市场项与本地项都能点开，详情层按 kind 决定给哪些操作。
@@ -636,7 +682,58 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
           {/* 标题不再带市场名：页签本身已经写着是哪个市场了，标题里再写一遍是重复。
               市场名改放在每张卡片的副标题上——那里才需要区分，因为「当前技能」那一块里
               混着好几个来路。 */}
-          <SkillSection title={t('skills.groupAddable')} count={addable.length}>
+          <SkillSection title={t('skills.groupAddable')} count={addable.length}
+            extra={(hasDownloads || authors.length > 0) && (
+              <div className="flex items-center gap-2.5">
+                {/* 排序：图标 + 排序二字点题。**只有市场真回了下载量才出现** —— 没有下载量时
+                    唯一"排序"就是列表自带的次序（后端按上传时间倒序），没有可切的第二种，不摆控件。
+                    基准项：有上传时间叫"最新"（名副其实），没有就老老实实叫"默认"。 */}
+                {hasDownloads && (
+                  <div className="flex items-center gap-1.5">
+                    <ArrowUpDownIcon size={13} style={{ color: 'var(--t3)' }} />
+                    <span className="text-[11px] whitespace-nowrap" style={{ color: 'var(--t3)' }}>{t('skills.sortLabel')}</span>
+                    <Segmented
+                      value={sortBy} onChange={v => setSortBy(v as 'default' | 'downloads')}
+                      options={[
+                        { value: 'default', label: hasCreateTime ? t('skills.sortLatest') : t('skills.sortDefault') },
+                        { value: 'downloads', label: t('skills.sortDownloads') },
+                      ]} />
+                  </div>
+                )}
+                {/* 作者：**纯筛选输入框，不带下拉**。
+                    上一版用了 datalist，Chromium 会在右侧画个又粗又丑的下拉三角，还跟 × 打架；
+                    而且作者动辄几十上百，弹一整列作者当建议毫无意义。这里就是打字即过滤，
+                    左侧一个作者图标点题，右侧 × 清空。 */}
+                {authors.length > 0 && (
+                  <div className="relative flex items-center">
+                    <UserIcon size={12} className="absolute left-2 pointer-events-none" style={{ color: 'var(--t3)' }} />
+                    <input
+                      value={author}
+                      onChange={e => setAuthor(e.target.value)}
+                      placeholder={t('skills.authorFilter')}
+                      className="rounded-lg pl-6 pr-6 py-1 text-[11px] outline-none transition-colors"
+                      style={{
+                        width: 140, background: 'var(--bg1)',
+                        border: `1px solid ${author ? 'var(--blue)' : 'var(--border)'}`,
+                        color: author ? 'var(--blue)' : 'var(--t1)',
+                      }}
+                      onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--blue)' }}
+                      onBlur={e => { (e.currentTarget as HTMLElement).style.borderColor = author ? 'var(--blue)' : 'var(--border)' }} />
+                    {author && (
+                      <button
+                        onClick={() => setAuthor('')}
+                        title={t('skills.authorAll')}
+                        className="absolute right-1.5 flex items-center justify-center rounded transition-colors"
+                        style={{ width: 15, height: 15, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--t1)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--t3)' }}>
+                        <XIcon size={12} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}>
             {(() => {
               const pg = paginate(addable, pgAdd, addGrid.pageSize)
               return (
@@ -705,8 +802,8 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
             ? () => { unpullMut.mutate(opened.key); setOpenedKey(null) }
             : undefined}
           unreferencing={unpullMut.isPending}
-          onCoworksChange={opened.kind === 'market'
-            ? undefined                       // 还没引用 → 没有可存的记录，见 ownerMut 的说明
+          onCoworksChange={opened.kind === 'market' || soleAgentNoMarket(agents)
+            ? undefined                       // 还没引用（无记录），或单 agent 无市场（没得选）
             : coworks => ownerMut.mutate({ key: opened.key, coworks })}
           coworksSaving={ownerMut.isPending}
         />
@@ -726,10 +823,15 @@ function usePage(resetKey: unknown) {
 }
 
 /** 一组，空的就整组不渲染 —— 一个只写着"0 项"的标题只是噪声。 */
-function SkillSection({ title, count, hint, children }: {
-  title: string; count: number; hint?: string; children: React.ReactNode
+function SkillSection({ title, count, hint, extra, children }: {
+  title: string; count: number; hint?: string
+  /** 标题行右侧的控件（排序/筛选）。挂在这里而不是搜索框旁边，
+   *  是为了让"只对这一组生效"看得出来。 */
+  extra?: React.ReactNode
+  children: React.ReactNode
 }) {
-  if (count === 0) return null
+  // count 为 0 也要把控件留着：作者筛到空结果时整组消失，用户就找不到那个筛选框把它改回来了。
+  if (count === 0 && !extra) return null
   return (
     <section>
       <div className="flex items-baseline gap-2 mb-2.5">
@@ -737,9 +839,50 @@ function SkillSection({ title, count, hint, children }: {
         <span className="rounded-full px-1.5 text-[10px]"
           style={{ background: 'var(--bg3)', color: 'var(--t3)', fontFamily: 'monospace' }}>{count}</span>
         {hint && <span className="text-[11px]" style={{ color: 'var(--t3)' }}>{hint}</span>}
+        {extra && <div className="ml-auto self-center">{extra}</div>}
       </div>
       {children}
     </section>
+  )
+}
+
+/** 下载量从高到低。
+ *
+ *  ⚠ **null 不是 0**：null = 这个市场根本不给下载量（自建那套就不给），
+ *  0 = 确实没人下过。把 null 当 0 排，会把一整批「没数据」的条目和真的冷门
+ *  混在一起；这里一律排到最后。 */
+export function byDownloadsDesc(a: RemoteCatalogItem, b: RemoteCatalogItem): number {
+  const x = a.download_count, y = b.download_count
+  if (x == null && y == null) return 0
+  if (x == null) return 1
+  if (y == null) return -1
+  return y - x
+}
+
+/** 两三项的小分段器。选中项要在**不 hover 时**就看得出来。 */
+function Segmented({ value, onChange, options }: {
+  value: string; onChange: (v: string) => void
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <div className="flex rounded-lg p-0.5" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
+      {options.map(o => {
+        const on = o.value === value
+        return (
+          <button key={o.value} onClick={() => onChange(o.value)}
+            className="rounded-md px-2 py-0.5 text-[11px] transition-colors"
+            style={{
+              background: on ? 'var(--bg1)' : 'transparent',
+              color: on ? 'var(--blue)' : 'var(--t2)',
+              fontWeight: on ? 600 : 400,
+              boxShadow: on ? '0 1px 2px rgba(15,31,61,.08)' : 'none',
+              border: 'none', cursor: 'pointer',
+            }}>
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -822,6 +965,17 @@ function tileFromCatalog(
  * 不同的去处，两项都要列出来。真正可以省掉选择的只有「从市场引用」那一步——那里归属
  * 就是「给谁用」，没有第二层含义。
  */
+/** 只有一个 cowork、且它连自己的 skill 市场都没有。
+ *
+ *  此时"上传到哪个市场""给哪个 cowork 用"都只有一个答案，归属选择框没有可选项 ——
+ *  导入、点开详情都不该再弹它。
+ *
+ *  ⚠ 单 agent 但**有**自己市场时不算：那时仍要区分"传通用还是传它自己的市场"，
+ *  选择框得留着（这正是之前"一个 agent 也显示通用/XX"的由来）。 */
+function soleAgentNoMarket(agents: readonly { hasOwnMarket?: boolean }[]): boolean {
+  return agents.length === 1 && agents[0].hasOwnMarket !== true
+}
+
 export function defaultCoworks(agents: readonly { id: string }[]): SkillCoworks {
   return agents.length === 1 ? [agents[0].id] : [ALL_COWORKS]
 }

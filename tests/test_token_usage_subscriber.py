@@ -34,6 +34,7 @@ def test_report_token_usage_does_not_emit_legacy_project_or_task_fields(monkeypa
     assert kind == "token_usage"
     assert payload == {
         "session_id": "desktop:session-1:2",
+        "cowork": "",
         "input_tokens": 12,
         "output_tokens": 3,
         "llm_account": "account-a",

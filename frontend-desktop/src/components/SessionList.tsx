@@ -9,6 +9,7 @@ import { isCloudSession } from '@/api/backends'
 import { Button } from '@/components/ui/button'
 import { formatTime } from '@/lib/utils'
 import { NewSessionDialog } from './NewSessionDialog'
+import { EditableSessionTitle } from './EditableSessionTitle'
 import { useProjectGroups, sessionActivityTime, NO_PROJECT_ID, type Project } from '@/hooks/useProjectGroups'
 import { useCurrentAgent } from '@/agents/useCurrentAgent'
 import { canStartSession, isSessionReadOnly, useLineupState } from '@/agents/lineup'
@@ -165,7 +166,8 @@ export function SessionList({ selectedId, pendingSession, centerView, onViewChan
   const filteredSessions = useMemo(() => {
     if (!searchQuery) return agentSessions
     return agentSessions.filter(s =>
-      (s.goal || '').toLowerCase().includes(searchQuery)
+      (s.title || '').toLowerCase().includes(searchQuery)
+      || (s.goal || '').toLowerCase().includes(searchQuery)
       || (s.user_prompt || '').toLowerCase().includes(searchQuery)
       || (s.workspace || '').toLowerCase().includes(searchQuery)
       || (s.id || '').toLowerCase().includes(searchQuery),
@@ -899,7 +901,6 @@ function SessionItem({ session, selected, onSelect, onDelete, onTogglePin, onTog
   onTogglePin?: () => void; onToggleArchive?: () => void; pinned?: boolean; archived?: boolean; showWorkspace?: boolean
 }) {
   const { t } = useI18n()
-  const title = session.goal || session.user_prompt || session.id.slice(0, 8)
   const isCloud = isCloudSession(session.id)
   // 云端也显示**真实文件夹名**：文件夹现在是用户自己命名的，一律显示「云端工作区」
   // 等于把这个信息抹掉了；云端身份由旁边的云图标表达。
@@ -923,7 +924,13 @@ function SessionItem({ session, selected, onSelect, onDelete, onTogglePin, onTog
     >
       <div className="flex items-start gap-1.5">
         {pinned && <PinIcon size={11} style={{ color: 'var(--blue)', flexShrink: 0, marginTop: 3 }} />}
-        <p className="min-w-0 flex-1 truncate text-sm" style={{ color: 'var(--t1)', fontWeight: 500 }}>{title}</p>
+        <EditableSessionTitle
+          session={session}
+          mode="modal"
+          editOnTitleClick={selected}
+          className="text-sm"
+          style={{ color: 'var(--t1)', fontWeight: 500 }}
+        />
         {/* hover 操作：置顶/取消、归档/取消、删除 */}
         <div className="invisible flex flex-shrink-0 items-center gap-1.5 group-hover:visible">
           {!archived && onTogglePin && (

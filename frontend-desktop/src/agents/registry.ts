@@ -28,6 +28,9 @@ export interface Agent {
   accent: string
   /** 套件自带 logo 的地址。**没有就没有** —— 界面回落到首字母标记。 */
   logoUrl?: string
+  /** 这个 cowork 有没有自己的 skill 市场。**只有一个 agent 且它连市场都没有时**，
+   *  "上传/引用给谁"就没有可选项了，界面据此不再弹归属选择框（见 SkillsPage）。 */
+  hasOwnMarket?: boolean
 }
 
 /** 后端 /api/v1/coworks 的一条。 */
@@ -39,6 +42,8 @@ export interface CoworkDTO {
   order: number
   /** 取套件自带 logo 的地址；**没有 logo 时后端给 null**。 */
   logo_url?: string | null
+  /** 这个 cowork 有没有自己的 skill 市场（后端按套件 skill_market_url/mythos 是否非空给）。 */
+  has_own_market?: boolean
 }
 
 const TEMPLATE_PREFIX = 'agent:'
@@ -91,6 +96,7 @@ export function hydrateAgents(rows: readonly CoworkDTO[] | null | undefined): vo
       subtitle: (r.subtitle || '').trim(),
       accent: (r.accent || '').trim() || FALLBACK_ACCENT,
       logoUrl: (r.logo_url || '').trim() || undefined,
+      hasOwnMarket: r.has_own_market === true,
     })
   }
   agents = out

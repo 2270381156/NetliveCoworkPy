@@ -104,6 +104,8 @@ class SessionEntry:
 
         self.status: str = "RUNNING"
         self.goal: str = user_prompt[:200]
+        # 用户手动标题与 AI 维护的 goal 分离：一旦设置，展示层永久优先使用它。
+        self.title: str = ""
         self.root_agent_id: str | None = None
 
         self.token_budget: int = 200_000
@@ -192,6 +194,7 @@ class SessionEntry:
         return {
             "id": self.session_id,
             "user_prompt": self.user_prompt,
+            "title": self.title,
             "goal": self.goal,
             "status": self.status,
             "template_id": self.template_id,
@@ -614,6 +617,11 @@ class SessionEntry:
                 self.updated_at = _now()
                 # 仅 INTERRUPTED 记成因;离开中断态(如 resume→RUNNING)清空,避免旧成因泄漏。
                 self.interrupt_reason = p.get("reason") if new_status == "INTERRUPTED" else None
+                # 终态即刻收口本轮 SSE 流：done 不再等后台整理(gather)与归属权检查——
+                # 两者卡死(如 LLM 无超时挂死)或被新一轮顶替时，本轮流仍能正常关闭
+                # (done 由 SSE 生成器出口合成，final_status 取上方刚更新的 self.status)。
+                if new_status in ("SUCCEEDED", "FAILED", "CANCELED"):
+                    self.sse_finished = True
                 update = self._session_update_json(new_status)
                 # ── session_notice 合成 ──
                 # FAILED 素材优先级：熔断（已在 FAILURE_THRESHOLD_HIT 处合成，跳过）
@@ -981,7 +989,14 @@ async def session_consumer(entry: SessionEntry, runtime: Any, token: int,
     if feed is None:
         feed = EventFeed(runtime.event_bus, entry.session_id)
     try:
+        logger.info("session_consumer[%s] 开始消费事件流 (token=%d, status=%s)",
+                    entry.session_id, token, entry.status)
+        _ev_n = 0
         async for ev in feed:
+            _ev_n += 1
+            _et = ev.get("type") if isinstance(ev, dict) else type(ev).__name__
+            logger.info("session_consumer[%s] 事件#%d type=%s status=%s",
+                        entry.session_id, _ev_n, _et, entry.status)
             if entry._consumer_token != token:
                 break
             await entry.append_event(ev)
@@ -1257,6 +1272,8 @@ def _entry_from_record(rec) -> SessionEntry:
         llm_account=rec.llm_provider,
     )
     entry.status = rec.status
+    # 兼容测试桩与旧的外部读模型：尚未带 title 属性时等同“从未手动命名”。
+    entry.title = getattr(rec, "title", "") or ""
     entry.goal = rec.goal or ""
     entry.root_agent_id = rec.root_agent_id
     entry.token_budget = rec.token_budget
