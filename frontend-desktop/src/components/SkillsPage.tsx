@@ -497,11 +497,11 @@ function MarketPanel({ cowork, username }: { cowork: string | null; username: st
 
   const usableRefs: TileItem[] = useMemo(() => {
     // 引用库只存名字和描述，**没有作者/发布时间/下载量**——那些只在市场目录里。所以这里按
-    // key 去目录里配一份补上。
+    // 引用身份去目录里配一份补上。
     //
-    // 用 key 而不是名字配对：引用的 skill_id 就是 `<source>:<remote_id>`，与目录条目的
-    // `source:id` 同一形状，能精确对上。按名字配会在两个市场有同名 skill 时配错人——那时
-    // 卡片上会显示另一个市场的作者和下载量，而且没有任何地方露馅。
+    // 用后端的 reference_id 而不是名字配对：已引用记录的 skill_id 就是这个确定性 ID，
+    // 与目录条目的 reference_id 同源，能精确对上。按名字配会在两个市场有同名 skill 时配错人
+    // ——那时卡片上会显示另一个市场的作者和下载量，而且没有任何地方露馅。
     const inMarket = new Map(catalog.map(i => [keyOf(i), i]))
     const out: TileItem[] = []
     for (const sk of mine) {
@@ -920,9 +920,14 @@ function Cluster({ label, count, children }: {
   )
 }
 
-/** 市场条目的复合键。两个市场可能发出相同 id，只用 id 会串台。 */
+/** 市场条目的引用身份 = 后端按页签作用域算好的 reference_id。
+ *
+ * 原先前端自己拼 `${source}:${id}`——v3 起同一 source:id 在通用与专属市场是**两条不同
+ * 的引用**（不同服务器），自拼键会把两个市场的"已引用"状态串台：用户以为专属版已就绪，
+ * 实际点开的是通用那份。配对、删除、改归属一律用后端给的身份；`${source}:${id}` 只
+ * 留给纯 UI 用途（请求去重、报错定位），不得决定引用身份。 */
 function keyOf(item?: RemoteCatalogItem): string {
-  return item ? `${item.source}:${item.id}` : ''
+  return item ? catalogReferenceId(item) : ''
 }
 
 function tileFromCatalog(

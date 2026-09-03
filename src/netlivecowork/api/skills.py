@@ -18,6 +18,7 @@ from netlivecowork.providers.capability.skills.adapters import MarketContext
 from netlivecowork.providers.capability.skills.adapters import registry as market_registry
 from netlivecowork.providers.capability.skills import current_user
 from netlivecowork.providers.capability.skills.errors import ERROR_STATUS, SkillError
+from netlivecowork.providers.capability.skills.references.presets import ReconcileResult
 
 logger = logging.getLogger(__name__)
 
@@ -113,16 +114,36 @@ def list_local_skills(
         current_user.get_current_username(), market_registry.per_user_sources()
     ):
         out.append(LocalSkillResponse(
-            skill_id=r.key,                       # "<source>:<remote_id>"，删除时据此路由
+            skill_id=r.key,                       # 不透明 reference_id：删除/改归属都按它路由
             name=r.name,
             description=r.description or "",
             version=r.skill_version or "",
             triggers=r.triggers,
             origin="cloud",
             source=r.source,
-            coworks=list(r.labels),
+            coworks=list(r.labels),               # 有效归属 = manual ∪ preset
         ))
     return out
+
+
+def _resolve_reference_id(ref_store, skill_id: str) -> str | None:
+    """skill_id → 不透明 reference_id（没有则 None，表示这不是一条云端引用）。
+
+    新格式直接命中；旧格式 ``<source>:<remote_id>`` 走库解析——**保留一个发布窗口**，
+    升级瞬间前端还揣着旧 ID 的在途状态（已加载列表、报错卡片），不至于突然全操作不了。
+    旧 ID 在多个作用域歧义时按"找不到"处理：猜错一家比明确失败更糟。
+    """
+    if ref_store.get_by_id(skill_id) is not None:
+        return skill_id
+    if ":" in skill_id:
+        source, _, remote_id = skill_id.partition(":")
+        try:
+            ref = ref_store.get_reference(source, remote_id)
+        except ValueError:
+            return None
+        if ref is not None:
+            return ref.key
+    return None
 
 
 @router.post("/{skill_id}/publish", response_model=PullSkillResponse)
@@ -131,16 +152,13 @@ def publish_local_skill(
     authorization: str | None = Header(default=None),
     local=Depends(deps.get_local_skill_service),
     cowork=Depends(deps.get_cowork_skill_service),
+    ref_store=Depends(deps.get_skill_reference_store),
 ) -> PullSkillResponse:
     """把一个本地 skill 直接发布到 cowork 市场（本地 skill 卡片上的"上传"按钮）。
-    云端引用的 skill（id 含冒号）本地无内容，不能发布。auth token 透传给 cowork 写 creator。
-
-    ⚠ **上传目标暂时固定为通用的 cowork 市场**，不看 skill 归属：各 cowork **自己的**
-    skill 市场目前都没开放"上传"接口，能收上传的只有通用市场。归属选择框仍然有用
-    （它决定"谁能用"），只是上传去向暂时与它无关。
-    等各 cowork 市场开放上传后，这里应改成**按 skill 归属选市场**（归属某 cowork →
-    发到那个 cowork 自己的市场；通用 → 通用市场）——那是这段将来要长出来的地方。"""
-    if ":" in skill_id:
+    云端引用的 skill 本地无内容，不能发布。auth token 透传给 cowork 写 creator。"""
+    # 按**库里有这条引用**判断，不看 ID 里有没有冒号——形状猜测迟早骗人
+    # （v3 的 ID 是 hash，也含冒号，但本地 skill 不在引用库里）。
+    if _resolve_reference_id(ref_store, skill_id) is not None:
         raise HTTPException(
             status_code=400,
             detail={"code": "CLOUD_SKILL_NOT_PUBLISHABLE", "message": "云端引用的 skill 不能上传"},
@@ -159,11 +177,13 @@ def delete_local_skill(
     skill_id: str,
     service=Depends(deps.get_local_skill_service),
     ref_store=Depends(deps.get_skill_reference_store),
+    reconciler=Depends(deps.get_profile_skill_preset_reconciler),
 ) -> None:
-    # 云端引用的 skill_id 是 "<source>:<remote_id>"（含冒号）→ 删引用；否则删本地文件夹。
-    if ":" in skill_id:
-        source, _, remote_id = skill_id.partition(":")
-        ref_store.remove_reference(source, remote_id)
+    # 引用库里有这条 ID（含旧格式兼容解析）→ 删引用（顺带为预置绑定写 opt-out，不复活）；
+    # 否则是本地自建的 → 删本地文件夹。
+    reference_id = _resolve_reference_id(ref_store, skill_id)
+    if reference_id is not None:
+        reconciler.user_delete(reference_id)
         _mark_skill_index_dirty()   # 引用集变化 → 作废索引
         return
     try:
@@ -182,16 +202,17 @@ def set_skill_coworks(
     skill_id: str,
     body: SetCoworksRequest,
     ref_store=Depends(deps.get_skill_reference_store),
+    reconciler=Depends(deps.get_profile_skill_preset_reconciler),
 ) -> None:
     """改一条 skill 的归属（卡片里那个勾选清单）。
 
-    云端引用的 skill_id 含冒号（``<source>:<remote_id>``）→ 改引用库；
-    否则是本地导入的 → 改本地那份归属表。
+    引用库里的 ID（含旧格式兼容解析）→ 改引用的 manual_labels（被移除的预置绑定
+    同步 opt-out，下次协调不悄悄加回）；否则是本地导入的 → 改本地那份归属表。
     """
     labels = list(_parse_labels(",".join(body.coworks)))
-    if ":" in skill_id:
-        source, _, remote_id = skill_id.partition(":")
-        ref_store.set_labels(source, remote_id, labels)
+    reference_id = _resolve_reference_id(ref_store, skill_id)
+    if reference_id is not None:
+        reconciler.user_set_labels(reference_id, labels)
     else:
         _local_owners().set_labels(skill_id, labels)
     _mark_skill_index_dirty()            # 归属变了 → 可见性变了 → 作废索引
@@ -221,7 +242,22 @@ def _parse_labels(raw: str) -> tuple[str, ...]:
 @router.post("/current-user", status_code=204)
 def set_current_user(body: CurrentUserRequest) -> None:
     current_user.set_current_username(body.username)
-    _mark_skill_index_dirty()   # 登录/切账号改变云端 skill 可见性 → 让索引重建
+    result = _reconcile_profile_skill_presets(body.username)
+    if result.changed:
+        _mark_skill_index_dirty()   # 登录/切账号改变可见性或带来预置引用 → 让索引重建
+
+
+def _reconcile_profile_skill_presets(username: str) -> ReconcileResult:
+    """登录/切账号后协调该用户的 profile 预置引用（按用户来源的预置要等 W3 用户名）。
+
+    best-effort：失败不影响登录本身（预置在下次启动/recheck 还会再协调）。
+    """
+    from netlivecowork.bootstrap.host_runtime import reconcile_profile_skill_presets
+    try:
+        return reconcile_profile_skill_presets(username)
+    except Exception:
+        logger.warning("skills：登录后协调 profile 预置引用失败", exc_info=True)
+        return ReconcileResult()
 
 
 # ── Remote marketplace (these MUST be registered before /{skill_id}) ──────────

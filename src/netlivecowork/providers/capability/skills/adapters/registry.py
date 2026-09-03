@@ -24,6 +24,7 @@ from typing import Any, Callable
 from .base import VISIBILITY_PER_USER, SkillMarketAdapter
 from .cowork import CoworkMarketAdapter
 from .mythos import MythosMarketAdapter
+from .scopes import MarketScope, build_scopes
 
 logger = logging.getLogger(__name__)
 
@@ -167,3 +168,21 @@ def per_user_sources() -> set[str]:
     别人的 skill 露出来。
     """
     return {m.name for m in MARKETS if m.adapter_cls.visibility == VISIBILITY_PER_USER}
+
+
+def market_scopes(settings: Any) -> list[MarketScope]:
+    """这台机器上有哪几个市场页签 —— **数据，不是 adapter 实例**。
+
+    预置协调器解析作用域只用数据：协调发生在启动期、不访问网络，也不该因为某家
+    地址没配/SSL 配置出错而炸掉。``build_scopes`` 只算一遍；地址合并（H2）与
+    空页签剔除（H3）的规则与市场页签完全同一份，不会两处漂移。
+    """
+    def _global_url(name: str) -> str:
+        spec = next((m for m in MARKETS if m.name == name), None)
+        return (spec.url_of(settings) or "").strip() if spec else ""
+
+    per_cowork = [
+        (m.cowork_id, (m.pull_server_url or "").strip(), (m.mythos_base_url or "").strip())
+        for m in cowork_markets()
+    ]
+    return build_scopes(_global_url("cowork"), _global_url("mythos"), per_cowork)

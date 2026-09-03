@@ -102,7 +102,9 @@ def test_mythos_reference_stays_hidden_from_other_users_even_when_unconfigured(e
     —— 那是个放宽权限的错。名单来自静态表，所以这条成立。
     """
     from netlivecowork.providers.capability.skills import current_user
+    from netlivecowork.providers.capability.skills.adapters.scopes import GENERAL_SCOPE
     from netlivecowork.providers.capability.skills.references.store import (
+        ReferenceIdentity,
         SkillReference,
         SkillReferenceStore,
     )
@@ -110,7 +112,8 @@ def test_mythos_reference_stays_hidden_from_other_users_even_when_unconfigured(e
     monkeypatch.setenv("NLC_SKILL_MYTHOS_BASE_URL", "")     # 那家没配
     store = SkillReferenceStore(env / "data")
     store.add_reference(SkillReference(
-        source="mythos", remote_id="m1", name="别人的", description="d", owner="alice",
+        identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "m1", "alice"),
+        name="别人的", description="d",
     ))
 
     current_user.set_current_username("bob")

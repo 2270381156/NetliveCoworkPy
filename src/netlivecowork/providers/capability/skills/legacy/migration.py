@@ -18,7 +18,8 @@ from pathlib import Path
 
 from ctx_weft.providers.capability_skill_local._parser import load_skill_md
 
-from ..references.store import SkillReference, SkillReferenceStore
+from ..adapters.scopes import GENERAL_SCOPE
+from ..references.store import ReferenceIdentity, SkillReference, SkillReferenceStore
 from .pull_store import SkillPullStore
 
 logger = logging.getLogger(__name__)
@@ -68,14 +69,11 @@ def migrate_pulled_to_references(
             continue
 
         ref_store.add_reference(SkillReference(
-            source=source,
-            remote_id=remote_id,
+            identity=ReferenceIdentity(GENERAL_SCOPE, source, remote_id),  # 旧数据无引用者 → 共享主体
             name=name,
             description=desc,
             triggers=triggers,
             skill_version=version,
-            owner=None,             # 旧数据无引用者
-            referenced_at=None,
         ))
         # 市场 skill 改引用式 → 删掉本地解压文件（用户自建的不在 pull store，不受影响）。
         shutil.rmtree(folder_dir, ignore_errors=True)

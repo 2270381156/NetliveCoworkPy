@@ -111,20 +111,38 @@ skills_dir/<技能>       引用库 + 市场（cowork / mythos）
 （前端展示、大模型执行）都无差别：
 
 **① 展示（发现 / 引用）**：聚合层把两源目录**合并成一份列表**给市场页——每条带一个内部
-`source` 标签（`cowork` / `mythos`，**仅供后端路由，UI 不展示**）+ `is_pulled`（是否已引用）。
-任一源失败只记日志、降级返回另一源；mythos 结果按用户名短时缓存。用户点"引用"后，本地**引用库**
-只写一条元数据 `{source, remote_id, name, description, owner(仅 mythos)}`。
+`source` 标签（`cowork` / `mythos`，**仅供后端路由，UI 不展示**）+ `reference_id`（按当前页签
+作用域算好的**确定性引用 ID**）+ `is_pulled`（是否已引用，按**精确身份**匹配）。任一源失败只记
+日志、降级返回另一源；mythos 结果按用户名短时缓存。用户点"引用"后，本地**引用库**只写一条
+L1 元数据，不下载内容。
 
 **② 执行（大模型用技能时）**：大模型进入某云端技能、调 `skill_executor__*` 时，云端 provider
-按引用里存的 **`source`** 把下载请求**派发到对应的源**（cowork 或 mythos），带当前用户名鉴权，
-拉到 zip → 解压到临时目录 → 执行 → 用完即删。也就是说——**"从哪个市场来"在引用时就记在 `source`
-里，执行时据它自动选后端**；大模型与执行器完全不感知两源差异，只看到"一个云端技能"。
+按引用里保存的 **`market_scope` + `source`** 把下载请求**派发到对应的服务器**（同一 source 在
+通用页签和某个 cowork 专属页签下指向**不同的服务器**——"从哪个市场来"在引用时就记进身份里，
+执行时据它自动选后端），带当前用户名鉴权，拉到 zip → 解压到临时目录 → 执行 → 用完即删。
+大模型与执行器完全不感知两源差异，只看到"一个云端技能"。
 
-**可见性因人而异**：mythos 技能按 `owner` 对**当前登录用户**过滤（cowork 公开不过滤）；下载带用户名防越权。
+**引用身份（v3）**：`(market_scope, source, remote_id, principal)` 四元组——市场页签、市场接口、
+市场内条目、引用者主体（cowork 共享 `*`；mythos 按 W3 用户名）。对外只暴露不透明
+`reference_id`（`ref:v3:<sha256>`），前端与 API 不拆 `source:remote_id` 猜身份。同一
+source/remote_id 的通用与专属条目因此是**两条不同的引用**，`is_pulled` 互不串台；通配归属只
+扩大可见范围，不改变"这条引用来自哪个市场"。v2 存量迁移按 `market_scope=general` 处理，
+只点亮通用页签。
+
+**profile 预置（`skills.presets`）**：cowork 套件可在清单里声明默认引用（完整 L1 元数据 +
+数量/长度上限，见 `cowork/manifest.py` 的常量表；发布侧按同一契约严格拒绝）。协调器
+`ProfileSkillPresetReconciler` 在**启动**（共享来源）、**W3 登录**（按用户来源）与
+**`/coworks/recheck`** 三个入口做差量协调：新预置播种、profile 减预置/收回只撤自己的绑定、
+引用无人认领（无手工归属且无绑定）才删。用户删除写 **opt-out**（profile/身份/主体三元组），
+普通启动不复活；重新手工引用清掉匹配的 opt-out。协调不访问网络、先内存计算后
+`store.mutate` 原子提交（引用 + 预置账本同一份 `skill_references.json`）。
+
+**可见性因人而异**：mythos 技能按 `principal` 对**当前登录用户**过滤（cowork 公开不过滤）；下载带用户名防越权。
 当前用户名由进程级 `current_user` 保存，登录 / 切账号时前端 `POST /skills/current-user` 写入。
 
 **一致性要点**：`current_user` 或引用集变化时，必须**刷新执行器的路由索引**——否则登录后新可见的
-云端技能不在旧索引里，大模型能进入却报 `SKILL_NOT_FOUND`。所以登录、拉市场目录、引用 / 删除引用后，都会主动让这份路由索引失效、下次用到时按当前状态重建。
+云端技能不在旧索引里，大模型能进入却报 `SKILL_NOT_FOUND`。所以登录、拉市场目录、引用 / 删除引用后，都会主动让这份路由索引失效、下次用到时按当前状态重建；预置协调则只在
+`ReconcileResult.changed`（原子提交成功且有变更）时失效索引。
 
 **③ 上传（把本地技能发布回市场）**：本地技能卡片上的「上传」按钮 → `POST /skills/{id}/publish`。
 
@@ -185,9 +203,9 @@ skills_dir/<技能>       引用库 + 市场（cowork / mythos）
 | `[引擎] ctx_weft/core/orchestrator/skill_executor_capability.py` | 三个通用工具 + 路由索引 + 派发 |
 | `[引擎] ctx_weft/providers/capability_skill_local/` | 本地 provider（扫目录、解析 SKILL.md、执行） |
 | `src/netlivecowork/providers/capability/skills/provider.py` | 云端引用 provider（借用—归还）——**本包唯一的 provider** |
-| `…/skills/adapters/` | 每家市场的接口方言（cowork / mythos）+ 有哪几家的注册表 |
+| `…/skills/adapters/` | 每家市场的接口方言（cowork / mythos）+ 有哪几家的注册表 + `scopes.py` 页签/作用域数据模型 |
 | `…/skills/services/` | 用例层：`market.py` 市场聚合 · `local.py` 本地 skill 增删查 |
-| `…/skills/references/` | 引用式加载的持久化：`store.py` 引用库 · `defaults.py` 默认引用播种 |
+| `…/skills/references/` | 引用式加载的持久化：`store.py` 引用库（v3 身份 + 原子事务）· `defaults.py` 默认引用播种 · `presets.py` profile 预置协调器 |
 | `…/skills/runtime/` | 执行期机制：`materialize.py` 临时物化 · `zip_utils.py` 解包校验 · `reporting.py` 上报元数据 |
 | `…/skills/legacy/` | 旧数据兼容（旧 pull 记录 → 引用），退休条件见其文档 |
 | `…/skills/errors.py` · `current_user.py` | 全包共用：错误类型与 HTTP 映射 · 进程级当前登录用户 |

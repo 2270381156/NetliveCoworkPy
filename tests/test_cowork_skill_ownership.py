@@ -22,6 +22,7 @@ from netlivecowork.providers.capability.skills.adapters.scopes import (
 )
 from netlivecowork.providers.capability.skills.references.store import (
     ANY_LABEL,
+    ReferenceIdentity,
     SkillReference,
     SkillReferenceStore,
 )
@@ -34,10 +35,11 @@ def clean():
     cowork_runtime.reset()
 
 
-def ref(name, *, source="cowork", labels=None, **kw):
-    d = dict(source=source, remote_id=name, name=name, **kw)
+def ref(name, *, source="cowork", labels=None, owner=None, **kw):
+    identity = ReferenceIdentity(GENERAL_SCOPE, source, name, owner or "*")
+    d = dict(identity=identity, name=name, **kw)
     if labels is not None:
-        d["labels"] = tuple(labels)
+        d["manual_labels"] = tuple(labels)
     return SkillReference(**d)
 
 

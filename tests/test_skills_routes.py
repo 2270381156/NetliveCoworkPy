@@ -23,14 +23,45 @@ class _FakeLocal:
 
 class _FakeRefStore:
     def __init__(self, refs=None):
-        self._refs = refs or []
-        self.removed = []
+        self._refs = list(refs or [])
 
     def list_visible(self, username, per_user_sources=frozenset()):
         return self._refs
 
-    def remove_reference(self, source, remote_id):
-        self.removed.append((source, remote_id))
+    def get_by_id(self, reference_id):
+        return next((r for r in self._refs if r.key == reference_id), None)
+
+    def get_reference(self, source, remote_id):
+        got = [r for r in self._refs if r.source == source and r.remote_id == remote_id]
+        if len(got) > 1:
+            raise ValueError(f"引用 '{source}:{remote_id}' 在多个作用域存在")
+        return got[0] if got else None
+
+
+class _FakeReconciler:
+    def __init__(self):
+        self.deleted: list = []
+        self.labels_set: list = []
+
+    def user_delete(self, reference_id):
+        self.deleted.append(reference_id)
+        return True
+
+    def user_set_labels(self, reference_id, labels):
+        self.labels_set.append((reference_id, tuple(labels)))
+        return True
+
+    def user_reference(self, ref, profile_id):
+        return ref.key
+
+
+def _cloud_ref(name="Cloud"):
+    from netlivecowork.providers.capability.skills.adapters.scopes import GENERAL_SCOPE
+    from netlivecowork.providers.capability.skills.references.store import ReferenceIdentity, SkillReference
+    return SkillReference(
+        identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "m1"), name=name,
+        description="c", triggers=["x"],
+    )
 
 
 def test_list_maps_to_response():
@@ -44,25 +75,54 @@ def test_list_maps_to_response():
 
 
 def test_list_includes_cloud_references():
-    from netlivecowork.providers.capability.skills.references.store import SkillReference
-    svc = _FakeLocal(listing=[])
-    ref = SkillReference(source="mythos", remote_id="m1", name="Cloud", description="c", triggers=["x"])
-    out = skills_api.list_local_skills(service=svc, ref_store=_FakeRefStore([ref]))
+    ref = _cloud_ref()
+    out = skills_api.list_local_skills(service=_FakeLocal(listing=[]), ref_store=_FakeRefStore([ref]))
     assert out[0].origin == "cloud"
     assert out[0].source == "mythos"
-    assert out[0].skill_id == "mythos:m1"
+    assert out[0].skill_id == ref.key   # v3 起是不透明 reference_id
 
 
-def test_delete_cloud_removes_reference():
-    rs = _FakeRefStore()
-    skills_api.delete_local_skill("mythos:m1", service=_FakeLocal(), ref_store=rs)
-    assert rs.removed == [("mythos", "m1")]
+def test_delete_cloud_reference_uses_opaque_id_and_records_opt_out():
+    """删除走 user_delete（顺带写 opt-out），按不透明 ID 路由，不拆冒号。"""
+    ref = _cloud_ref()
+    rec = _FakeReconciler()
+    skills_api.delete_local_skill(
+        ref.key, service=_FakeLocal(), ref_store=_FakeRefStore([ref]), reconciler=rec,
+    )
+    assert rec.deleted == [ref.key]
+
+
+def test_delete_accepts_legacy_source_colon_remote_id_within_migration_window():
+    """旧格式 "source:remote_id" 仍可解析到唯一引用——升级瞬间前端的在途状态不失效。"""
+    ref = _cloud_ref()
+    rec = _FakeReconciler()
+    skills_api.delete_local_skill(
+        "mythos:m1", service=_FakeLocal(), ref_store=_FakeRefStore([ref]), reconciler=rec,
+    )
+    assert rec.deleted == [ref.key]
+
+
+def test_delete_ambiguous_legacy_id_is_not_a_reference():
+    """旧 ID 命中多个作用域 → 按非引用处理（落到本地删除路径），不许猜一家。"""
+    from netlivecowork.providers.capability.skills.adapters.scopes import GENERAL_SCOPE
+    from netlivecowork.providers.capability.skills.references.store import ReferenceIdentity, SkillReference
+    duo = [
+        SkillReference(identity=ReferenceIdentity(GENERAL_SCOPE, "mythos", "m1"), name="g"),
+        SkillReference(identity=ReferenceIdentity("ipmaster", "mythos", "m1"), name="s"),
+    ]
+    svc = _FakeLocal()
+    skills_api.delete_local_skill(
+        "mythos:m1", service=svc, ref_store=_FakeRefStore(duo), reconciler=_FakeReconciler(),
+    )
+    assert svc._listing == []            # 走了本地分支（没炸歧义 ValueError）
 
 
 def test_delete_not_found_maps_to_404():
     svc = _FakeLocal(raises=SkillError("LOCAL_SKILL_NOT_FOUND", "nope"))
     with pytest.raises(HTTPException) as e:
-        skills_api.delete_local_skill("x", service=svc, ref_store=_FakeRefStore())
+        skills_api.delete_local_skill(
+            "x", service=svc, ref_store=_FakeRefStore(), reconciler=_FakeReconciler(),
+        )
     assert e.value.status_code == 404
     assert e.value.detail["code"] == "LOCAL_SKILL_NOT_FOUND"
 
@@ -70,8 +130,38 @@ def test_delete_not_found_maps_to_404():
 def test_delete_invalid_id_maps_to_400():
     svc = _FakeLocal(raises=SkillError("LOCAL_SKILL_INVALID_ID", "bad"))
     with pytest.raises(HTTPException) as e:
-        skills_api.delete_local_skill("../x", service=svc, ref_store=_FakeRefStore())
+        skills_api.delete_local_skill(
+            "../x", service=svc, ref_store=_FakeRefStore(), reconciler=_FakeReconciler(),
+        )
     assert e.value.status_code == 400
+
+
+def test_set_coworks_uses_opaque_reference_id():
+    ref = _cloud_ref()
+    rec = _FakeReconciler()
+    skills_api.set_skill_coworks(
+        ref.key, skills_api.SetCoworksRequest(coworks=["ipmaster"]),
+        ref_store=_FakeRefStore([ref]), reconciler=rec,
+    )
+    assert rec.labels_set == [(ref.key, ("ipmaster",))]
+
+
+def test_publish_rejects_cloud_by_store_lookup_not_colon_heuristic():
+    """发布拒绝云端引用看的是**库里有这条引用**，不是 ID 形状——
+    v3 的 hash ID 同样含冒号，形状猜测迟早骗人。"""
+    ref = _cloud_ref()
+    with pytest.raises(HTTPException) as e:
+        skills_api.publish_local_skill(
+            ref.key, local=_FakeLocal(), cowork=_FakeCowork(),
+            ref_store=_FakeRefStore([ref]),
+        )
+    assert e.value.status_code == 400
+    assert e.value.detail["code"] == "CLOUD_SKILL_NOT_PUBLISHABLE"
+
+
+class _FakeCowork:
+    def import_to_remote(self, data, filename, ctx):
+        return {"skill_id": "uploaded", "name": "n"}
 
 
 class _FakeMarket:
