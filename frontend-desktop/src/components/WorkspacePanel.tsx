@@ -40,6 +40,28 @@ function normalizeSep(p: string) {
 // 文件夹。此前云端草稿另走一个"待上传"暂存区，文件只存在内存里、建会话时才真传——
 // 结果是界面显示"上传成功"而云上什么都没有，用户无从分辨。既然云端的文件夹在选定/新建
 // 那一刻就已经存在（CloudFolderPicker 会建它），就没有理由再造一个假的中间态。
+// 从拖拽事件里把「文件」和「文件夹」分开。
+// 文件夹要单独识别：它在 dataTransfer.files 里表现为一个 size=0、读不出内容的"假文件"，
+// 直接塞进 FormData 上传会在读取时抛 → 整个请求失败（就是那句莫名的 "failed to fetch"）。
+// 用 webkitGetAsEntry 提前挑出文件夹，只上传真正的文件。
+function splitDrop(e: React.DragEvent): { files: File[]; folders: string[] } {
+  const items = e.dataTransfer.items
+  if (items && items.length && typeof items[0].webkitGetAsEntry === 'function') {
+    const files: File[] = []
+    const folders: string[] = []
+    for (const it of Array.from(items)) {
+      if (it.kind !== 'file') continue
+      const entry = it.webkitGetAsEntry()
+      if (entry?.isDirectory) { folders.push(entry.name); continue }
+      const f = it.getAsFile()
+      if (f) files.push(f)
+    }
+    return { files, folders }
+  }
+  // 兜底：拿不到 items（少数环境）就用 files——此路无法区分文件夹。
+  return { files: e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [], folders: [] }
+}
+
 export function WorkspacePanel(props: Props) {
   return <Workspace {...props} />
 }
@@ -58,7 +80,10 @@ function Workspace({ sessionId, workingDir, onClose, onPreviewFile, active = tru
   const uploadRef = useRef<HTMLInputElement>(null)
   // 上传与下载共用一条错误提示：同一处的操作反馈，没必要分两个位置显示。
   const [actionError, setActionError] = useState<string | null>(null)
+  const [actionInfo, setActionInfo] = useState<string | null>(null)   // 成功提示（绿），与红色错误分开
   const [uploading, setUploading] = useState(false)
+  // 从外部（桌面/资源管理器）往面板里拖文件时高亮，告诉用户"这里能放"。
+  const [dragOver, setDragOver] = useState(false)
 
   const rootPath = workingDir || ''
   const sep = rootPath.includes('\\') ? '\\' : '/'
@@ -165,14 +190,29 @@ function Workspace({ sessionId, workingDir, onClose, onPreviewFile, active = tru
   }
 
   // 上传落在**当前浏览的目录**，与用户所见一致；传完立刻刷新列表。
-  async function uploadInto(list: FileList | null) {
-    const picked = list ? Array.from(list) : []
-    if (picked.length === 0) return
+  // 把文件复制进工作区目录 targetPath（默认当前浏览目录）。files/folders 由 splitDrop 分好；
+  // 点上传按钮进来时 folders 恒空。targetLabel 只用于成功提示里的目录名。
+  async function copyIntoDir(files: File[], folders: string[], targetPath: string, targetLabel: string) {
     setActionError(null)
+    setActionInfo(null)
+    if (folders.length) {
+      // 文件夹明确告知（而不是让它变成 "failed to fetch"）。夹带的普通文件仍继续传。
+      setActionError(t('workspace.folderDropUnsupported', { name: folders[0] }))
+      if (files.length === 0) return
+    }
+    if (files.length === 0) return
+    // 同名覆盖提示：只有落在**当前浏览目录**、且列表已加载时才比对得到；拖进子目录无从预知，
+    // 交给后端按名覆盖（和点上传按钮的既有行为一致）。
+    if (targetPath === browsePath && listing) {
+      const existing = new Set(listing.entries.filter(x => !x.is_dir).map(x => x.name))
+      const clash = files.filter(f => existing.has(f.name)).map(f => f.name)
+      if (clash.length && !window.confirm(t('workspace.overwriteConfirm', { names: clash.join('、'), count: clash.length }))) return
+    }
     setUploading(true)
     try {
-      await workspaceApi.upload(sessionId, browsePath, picked, backend)
+      await workspaceApi.upload(sessionId, targetPath, files, backend)
       await refetch()
+      setActionInfo(t('workspace.copied', { count: files.length, dir: targetLabel }))
     } catch (e) {
       const err = e as Error & { status?: number }
       // 413 = 单文件超限或空间用满，后端给的 detail 已足够具体，直接呈现。
@@ -185,11 +225,38 @@ function Workspace({ sessionId, workingDir, onClose, onPreviewFile, active = tru
     }
   }
 
+  // 落在当前浏览目录时，成功提示里显示的目录名。
+  const currentDirLabel = relParts.length ? relParts[relParts.length - 1] : rootName
+
+  // 提示几秒后自动收起，别一直挂着占地方。错误留得比成功久一点，给足看清的时间。
+  useEffect(() => {
+    if (!actionInfo) return
+    const id = setTimeout(() => setActionInfo(null), 3000)
+    return () => clearTimeout(id)
+  }, [actionInfo])
+  useEffect(() => {
+    if (!actionError) return
+    const id = setTimeout(() => setActionError(null), 6000)
+    return () => clearTimeout(id)
+  }, [actionError])
+
   return (
     <div
       className="flex h-full flex-col text-xs"
-      onDragOver={e => { if (cloud) e.preventDefault() }}
-      onDrop={e => { if (!cloud) return; e.preventDefault(); void uploadInto(e.dataTransfer.files) }}
+      style={dragOver ? { outline: '2px dashed var(--blue)', outlineOffset: '-4px' } : undefined}
+      // 从外部拖真实文件进来 → 复制进当前浏览的目录（复用 /workspace/upload，本地/云端同一条路）。
+      // 只认带 Files 的拖拽；面板内把文件名拖去输入框那种（text/plain、无 Files）不接，直接放行。
+      onDragOver={e => {
+        if (!e.dataTransfer.types.includes('Files')) return
+        e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDragOver(true)
+      }}
+      onDragLeave={e => { if (e.currentTarget === e.target) setDragOver(false) }}
+      onDrop={e => {
+        if (!e.dataTransfer.types.includes('Files')) return
+        e.preventDefault(); setDragOver(false)
+        const { files, folders } = splitDrop(e)
+        void copyIntoDir(files, folders, browsePath, currentDirLabel)
+      }}
     >
       {/* Header —— 透明无边线，跟卡片白底一体 */}
       <div>
@@ -267,6 +334,12 @@ function Workspace({ sessionId, workingDir, onClose, onPreviewFile, active = tru
             {actionError}
           </div>
         )}
+        {actionInfo && !actionError && (
+          <div className="mx-3 mb-2 rounded-md px-2 py-1 text-[11px]"
+               style={{ color: 'var(--green)', background: 'rgba(22,163,74,0.12)' }}>
+            {actionInfo}
+          </div>
+        )}
       </div>
 
       {cloud && (
@@ -275,7 +348,7 @@ function Workspace({ sessionId, workingDir, onClose, onPreviewFile, active = tru
           type="file"
           multiple
           style={{ display: 'none' }}
-          onChange={e => { void uploadInto(e.target.files); e.target.value = '' }}
+          onChange={e => { void copyIntoDir(e.target.files ? Array.from(e.target.files) : [], [], browsePath, currentDirLabel); e.target.value = '' }}
         />
       )}
 
@@ -316,6 +389,7 @@ function Workspace({ sessionId, workingDir, onClose, onPreviewFile, active = tru
             name={entry.name}
             isDir
             onNavigate={() => navigateTo(entry.path)}
+            onDropFiles={e => { const { files, folders } = splitDrop(e); void copyIntoDir(files, folders, entry.path, entry.name) }}
             onRemove={cloud ? (() => void deleteOne(entry.path, entry.name, true)) : undefined}
             removeDestructive
           />
@@ -377,7 +451,7 @@ function BreadcrumbChip({ label, active, onClick }: { label: string; active: boo
   )
 }
 
-function FileRow({ name, isDir, size, onNavigate, onOpen, onRemove, onDownload, removeDestructive }: {
+function FileRow({ name, isDir, size, onNavigate, onOpen, onRemove, onDownload, onDropFiles, removeDestructive }: {
   name: string
   isDir: boolean
   size?: number | null
@@ -385,6 +459,7 @@ function FileRow({ name, isDir, size, onNavigate, onOpen, onRemove, onDownload, 
   onOpen?: () => void
   onRemove?: () => void      // 给了就在行尾显示移除/删除按钮（草稿待上传清单、云端工作区）
   onDownload?: () => void    // 给了就在行尾显示下载按钮（悬停可见）
+  onDropFiles?: (e: React.DragEvent) => void   // 仅文件夹：往这一行拖文件 → 复制进该文件夹
   /** 真删文件（垃圾桶 + 危险色）；缺省是"从清单里移除"（X），后者不动磁盘。 */
   removeDestructive?: boolean
 }) {
@@ -393,6 +468,8 @@ function FileRow({ name, isDir, size, onNavigate, onOpen, onRemove, onDownload, 
     : getFileStyle(name)
 
   const accentColor = isDir ? '#f59e0b' : 'var(--blue)'
+  const [dropHover, setDropHover] = useState(false)   // 拖文件悬停在该文件夹行上时高亮
+  const canDropInto = isDir && !!onDropFiles
 
   return (
     <div
@@ -400,8 +477,20 @@ function FileRow({ name, isDir, size, onNavigate, onOpen, onRemove, onDownload, 
       // 拖到聊天输入框 → 在光标处插入文件名（输入框的 onDrop 接收）
       draggable
       onDragStart={e => { e.dataTransfer.setData('text/plain', name); e.dataTransfer.effectAllowed = 'copy' }}
+      // 文件夹行接收外部拖来的文件 → 复制进这个文件夹。stopPropagation 拦住冒泡，
+      // 否则面板根 div 的 onDrop 会再触发一次、把文件落进当前目录而非这个文件夹。
+      // 只认带 Files 的拖拽；面板内把文件名拖来拖去（text/plain）不接。
+      onDragOver={canDropInto ? (e => {
+        if (!e.dataTransfer.types.includes('Files')) return
+        e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; setDropHover(true)
+      }) : undefined}
+      onDragLeave={canDropInto ? (() => setDropHover(false)) : undefined}
+      onDrop={canDropInto ? (e => {
+        if (!e.dataTransfer.types.includes('Files')) return
+        e.preventDefault(); e.stopPropagation(); setDropHover(false); onDropFiles!(e)
+      }) : undefined}
       className="group relative flex cursor-pointer items-center gap-2 px-3 py-1.5 mx-2 rounded-lg"
-      style={{ transition: 'background var(--tr)' }}
+      style={{ transition: 'background var(--tr)', ...(dropHover ? { background: 'var(--blue-dim)', outline: '1px dashed var(--blue)' } : {}) }}
       onMouseEnter={e => {
         const el = e.currentTarget as HTMLElement
         el.style.background = 'var(--bg3)'

@@ -320,6 +320,9 @@ const zh: Dict = {
   'workspace.deleteFailed': '删除失败',
   'workspace.deleteDirConfirm': '删除文件夹「{name}」及其全部内容？此操作不可撤销。',
   'workspace.deleteFolder': '删除文件夹',
+  'workspace.folderDropUnsupported': '暂不支持拖入文件夹（已跳过「{name}」），请拖单个文件',
+  'workspace.overwriteConfirm': '{names} 已存在，覆盖？',
+  'workspace.copied': '已复制 {count} 个文件到「{dir}」',
   'cloud.warmingUp': '正在准备你的云端环境…',
   'cloud.offline': '云端暂时连不上，稍后重试',
 
@@ -774,6 +777,9 @@ const en: Dict = {
   'workspace.deleteFailed': 'Delete failed',
   'workspace.deleteDirConfirm': 'Delete folder "{name}" and everything in it? This cannot be undone.',
   'workspace.deleteFolder': 'Delete folder',
+  'workspace.folderDropUnsupported': 'Dropping folders isn’t supported yet ("{name}" skipped) — drop individual files',
+  'workspace.overwriteConfirm': '{names} already exist(s). Overwrite?',
+  'workspace.copied': 'Copied {count} file(s) to "{dir}"',
   'cloud.warmingUp': 'Preparing your cloud environment…',
   'cloud.offline': 'Cloud is unreachable; retrying',
 
