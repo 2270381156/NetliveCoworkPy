@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2Icon, SearchIcon, PackageIcon, ZapIcon, ChevronLeftIcon, ArrowUpDownIcon, XIcon, UserIcon } from 'lucide-react'
-import { skillsApi, ALL_COWORKS, isCommonSkill } from '@/api/skills'
+import { skillsApi, ALL_COWORKS, isCommonSkill, catalogReferenceId } from '@/api/skills'
 import type { LocalSkill, RemoteCatalogItem, SkillCoworks } from '@/api/skills'
 import { useAgents } from '@/agents/useAgents'
 import { Pager, SkillTile, TileGrid, paginate, useTileGrid, type TileItem } from '@/components/SkillTile'

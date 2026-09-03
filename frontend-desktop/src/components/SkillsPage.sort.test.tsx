@@ -13,7 +13,7 @@ import type { RemoteCatalogItem } from '@/api/skills'
 
 const item = (name: string, download_count?: number | null): RemoteCatalogItem => ({
   source: 'netcowork' as RemoteCatalogItem['source'],
-  id: name, name, description: null, updater: null,
+  id: name, name, description: null, updater: null, reference_id: name,
   create_time: null, is_pulled: false, download_count,
 })
 
