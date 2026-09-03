@@ -5,13 +5,16 @@ import { viteStaticCopy } from 'vite-plugin-static-copy'
 import fs from 'fs'
 import path from 'path'
 
-const backendPort = process.env.BACKEND_PORT ?? '15926'
-
 // 品牌标识唯一来源（与 electron 主进程、PyInstaller spec 同一份文件）。
 // 用 fs 读而非 import：vite.config 走 Node ESM，JSON import 需要 import attributes，
 // 各 Node 版本支持不一，读文件最稳。
 const brandingPath = path.resolve(__dirname, '../electron/branding.json')
 const branding = JSON.parse(fs.readFileSync(brandingPath, 'utf-8'))
+
+// 后端端口的唯一来源就是 branding.backendPort（现为 17926）。**绝不回落到 15926**——
+// 那是上一代 IPMaster-Cowork 的端口，占上会与旧版互相串台（见 branding.json 注释与
+// electron/main.js）。手动把后端起在别的端口时用 BACKEND_PORT 环境变量覆盖。
+const backendPort = process.env.BACKEND_PORT ?? String(branding.backendPort)
 
 export default defineConfig({
   plugins: [

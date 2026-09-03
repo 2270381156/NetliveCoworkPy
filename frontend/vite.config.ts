@@ -3,7 +3,10 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
-const backendPort = process.env.BACKEND_PORT ?? '15926'
+// 与 electron/branding.json 的 backendPort 保持一致（现为 17926）。**别用 15926**——
+// 那是上一代 IPMaster-Cowork 的端口，占上会与旧版互相串台（见 branding.json 注释）。
+// 后端起在别的端口时用 BACKEND_PORT 环境变量覆盖。
+const backendPort = process.env.BACKEND_PORT ?? '17926'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

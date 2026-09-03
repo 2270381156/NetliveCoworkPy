@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test'
 
-// 对**真实后端**(:15926)驱动采集 golden-master fixtures / 冒烟截图。
-// 与单元测试(vitest, src/**)是两码事——这里不 mock /api,Vite dev 代理 /api → 15926(见 vite.config.ts)。
+// 对**真实后端**(:17926,见 electron/branding.json)驱动采集 golden-master fixtures / 冒烟截图。
+// 与单元测试(vitest, src/**)是两码事——这里不 mock /api,Vite dev 代理 /api → 后端(端口由 vite.config.ts 从 branding 取)。
 // SSE 帧采集靠测试侧劫持 EventSource(见 capture/_setup.ts),不改任何产品代码。
 const PORT = 5181
 

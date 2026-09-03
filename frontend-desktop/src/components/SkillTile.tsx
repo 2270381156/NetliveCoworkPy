@@ -18,7 +18,7 @@
  *
  * 配色一律走既有 CSS 变量，不引入新色板 —— 这个页面没有理由长得与产品其它部分不同。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CheckIcon, DownloadIcon, PlusIcon, ZapIcon } from 'lucide-react'
 
 import { useAgents } from '@/agents/useAgents'
@@ -196,8 +196,9 @@ const GRID_GAP = 12
 /** 等宽自适应网格。窄侧栏展开时自动降列，不写死列数。 */
 export function TileGrid({ children, gridRef }: {
   children: React.ReactNode
-  /** 传了就能被 useTileGrid 量宽度，用来把每页凑成整行（见那里）。 */
-  gridRef?: React.RefObject<HTMLDivElement | null>
+  /** 传了就能被 useTileGrid 量宽度，用来把每页凑成整行（见那里）。
+   *  用 React.Ref 而不是 RefObject —— useTileGrid 现在给的是 callback ref。 */
+  gridRef?: React.Ref<HTMLDivElement>
 }) {
   return (
     <div ref={gridRef} style={{
@@ -239,11 +240,15 @@ export function columnsFor(width: number): number {
 }
 
 export function useTileGrid(rows: number = PAGE_ROWS) {
-  const ref = useRef<HTMLDivElement>(null)
+  // **用 callback ref 而不是 RefObject**：网格是条件渲染的（数据 react-query 异步加载完、
+  // 且有 items 才渲染）。首帧网格根本不在 DOM 里，若用 `useEffect(..., [])` + ref.current，
+  // 那一刻 ref.current 是 null，effect 直接 return，之后 deps 为空再不重跑——ResizeObserver
+  // 永远装不上，cols 卡在 0，pageSize 一直吃兜底的 12，跟实际列数对不上，最后一行就空一截。
+  // callback ref 在网格真正挂载/卸载时触发，把量宽的 effect 重新跑起来。
+  const [el, setEl] = useState<HTMLDivElement | null>(null)
   const [cols, setCols] = useState(0)
 
   useEffect(() => {
-    const el = ref.current
     if (!el) return
     // auto-fill 的列数：每列至少 TILE_MIN 宽，列间隔 GRID_GAP。加一个 GRID_GAP 再除，
     // 是因为 n 列之间只有 n-1 个间隔。
@@ -253,9 +258,9 @@ export function useTileGrid(rows: number = PAGE_ROWS) {
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [el])
 
-  return { ref, pageSize: cols > 0 ? cols * rows : PAGE_SIZE }
+  return { ref: setEl, pageSize: cols > 0 ? cols * rows : PAGE_SIZE }
 }
 
 /** 纯函数，便于单测。page 从 1 起；越界一律夹回有效范围，不返回空页。 */

@@ -123,13 +123,17 @@ def cmd_run(args):
 def _argv_with_frozen_default(argv: list[str]) -> list[str]:
     """冻结态没有命令行参数（Electron 直接 spawn exe），默认当成 `serve` 跑。
 
-    端口取 NLC_BACKEND_PORT（Electron 注入，默认 15926）。dev 下原样返回，
-    不给 `ipmc` 裸命令加隐含行为——那边该打印帮助。
+    端口取 NLC_BACKEND_PORT（Electron 从 branding.json 注入，现为 17926）。dev 下原样
+    返回，不给 `ipmc` 裸命令加隐含行为——那边该打印帮助。
+
+    兜底值 17926 只在没人注入 NLC_BACKEND_PORT（直接双击冻结 exe）时才用到，须与
+    electron/branding.json 的 backendPort 一致。**绝不用 15926**——那是上一代
+    IPMaster-Cowork 的端口，占上会与旧版互相串台（见 branding.json 注释）。
     """
     import os
     if argv or not getattr(sys, "frozen", False):
         return argv
-    return ["serve", "--host", "0.0.0.0", "--port", os.environ.get("NLC_BACKEND_PORT", "15926")]
+    return ["serve", "--host", "0.0.0.0", "--port", os.environ.get("NLC_BACKEND_PORT", "17926")]
 
 
 def main():
