@@ -46,9 +46,12 @@ function eventIsAfterLoginBoundary(event, context) {
   return eventMs != null && eventMs > ctx.notBeforeMs;
 }
 
-function buildTokenUsagePayload(event) {
+function buildTokenUsagePayload(event, itemId) {
   const value = event && typeof event === 'object' ? event : {};
   return {
+    // 幂等去重键：一个上报事件生成一次、首发与所有重试都用同一个（entry.itemId，
+    // 由 prepareRetryBatch 分配）。云端以 (用户, itemId) 去重，消除重发导致的重复计数。
+    itemId: itemId || '',
     sessionId: value.session_id,
     cowork: value.cowork || '',
     inputTokens: value.input_tokens || 0,

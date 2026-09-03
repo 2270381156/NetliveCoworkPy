@@ -2178,12 +2178,12 @@ app.whenReady().then(async () => {
   // 上报——用一个持久化到磁盘的重试队列，失败的记录留到下一轮跟新数据一起重试，不丢。
   const TOKEN_USAGE_RETRY_MAX = 500; // 云端长时间不可达时的上限，防止重试队列无限增长
 
-  async function postTokenUsageEvent(event, token, cloudBase, signal) {
+  async function postTokenUsageEvent(event, token, cloudBase, signal, itemId) {
     const res = await httpFetch(`${cloudBase}/api/token-usage/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       signal,
-      body: JSON.stringify(buildTokenUsagePayload(event)),
+      body: JSON.stringify(buildTokenUsagePayload(event, itemId)),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
@@ -2284,8 +2284,8 @@ app.whenReady().then(async () => {
     },
     loadRetryQueue: loadTokenUsageRetryQueue,
     saveRetryQueue: saveTokenUsageRetryQueue,
-    postEvent: (event, context, cloudBase, signal) =>
-      postTokenUsageEvent(event, context.token, cloudBase, signal),
+    postEvent: (event, context, cloudBase, signal, itemId) =>
+      postTokenUsageEvent(event, context.token, cloudBase, signal, itemId),
     log: elog,
     maxItems: TOKEN_USAGE_RETRY_MAX,
   });

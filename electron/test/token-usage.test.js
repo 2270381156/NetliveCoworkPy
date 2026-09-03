@@ -29,16 +29,17 @@ function event(ts, suffix = '1') {
   };
 }
 
-test('cloud payload contains only the five token-usage contract fields', () => {
+test('cloud payload carries itemId + the token-usage contract fields, nothing else', () => {
   const payload = buildTokenUsagePayload({
     ...event('2026-07-13T08:00:01.000Z'),
     project_id: 'legacy-project',
     task_id: 'legacy-task',
     llm_account: 'account-a',
     llm_model: 'model-a',
-  });
+  }, 'item-abc-123');
 
   assert.deepStrictEqual(payload, {
+    itemId: 'item-abc-123',
     sessionId: 'desktop:session:1',
     cowork: '',
     inputTokens: 10,
@@ -47,6 +48,7 @@ test('cloud payload contains only the five token-usage contract fields', () => {
     llmModel: 'model-a',
   });
   assert.deepStrictEqual(Object.keys(payload), [
+    'itemId',
     'sessionId',
     'cowork',
     'inputTokens',
@@ -54,6 +56,11 @@ test('cloud payload contains only the five token-usage contract fields', () => {
     'llmAccount',
     'llmModel',
   ]);
+});
+
+test('cloud payload itemId is empty string when none supplied (defensive)', () => {
+  const payload = buildTokenUsagePayload(event('2026-07-13T08:00:01.000Z'));
+  assert.strictEqual(payload.itemId, '');
 });
 
 test('login boundary strictly drops old/equal/invalid events and retains new events', () => {
