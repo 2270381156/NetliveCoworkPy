@@ -712,20 +712,49 @@ def _cowork_markets():
 
 
 def _cowork_mcp_wrapper():
-    """按 cowork 归属过滤 MCP 的包装器；这个构建没有 cowork 这一层就返回 None。"""
-    from netlivecowork.cowork.guards import CoworkScopedMCPProvider
-    from netlivecowork.cowork.runtime import client_shipped_mcp_names, get_policy
+    """按 cowork 归属过滤 MCP 的包装器；这个构建没有 cowork 这一层就返回 None。
+
+    衍生品牌可能整个摘掉 cowork 子系统（架构设计 D2：去掉 cowork 后端仍能跑，单 agent 形态
+    靠这条）。那种构建里下面这些 `netlivecowork.cowork.*` import 会 ImportError —— 捕获后
+    返回 None，manager 收到 None 就**原样注册**（见 MCPProviderManager._create_and_register
+    的 wrap 分支），MCP 照常可用、只是不按归属过滤。**import 必须留在函数体内并包在 try 里**：
+    挪到模块顶层、或去掉这层兜底，"没有 cowork 就 ImportError 拖垮 MCP 注册"就会回来。
+    """
+    try:
+        from netlivecowork import paths
+        from netlivecowork.cowork import installed
+        from netlivecowork.cowork.guards import CoworkScopedMCPProvider
+        from netlivecowork.cowork.runtime import client_shipped_mcp_names, get_policy
+    except ImportError:
+        logger.info("MCP：此构建未装 cowork 子系统，不做归属过滤、原样注册（架构设计 D2）")
+        return None
 
     shipped = client_shipped_mcp_names()
+
+    def _is_suite_defined(server_name: str) -> bool:
+        """这个 server 是不是**某个已装套件在 `mcp.define` 里声明**的。
+
+        每次注册时现算(读盘,低频)——运行期 `/coworks/recheck` 又装了新套件时也准,
+        不吃启动那一刻的快照。
+        """
+        for cowork in installed.list_all(paths.coworks_dir()):
+            if any(d.name == server_name for d in cowork.mcp_define):
+                return True
+        return False
 
     def wrap(provider, server_name: str):
         return CoworkScopedMCPProvider(
             provider,
             server_name,
             get_policy,
-            # ⚠ 客户端自带的 MCP 不受套件声明约束（需求 G6）：它随包发布、
-            # 云端管理台里根本不会列出它。拿套件声明去卡它 = 所有 cowork 都失去这个工具。
-            suite_delivered=server_name not in shipped,
+            # 受 cowork 归属(`mcp.use`)约束的**只有套件声明过的** server。两类一律豁免、
+            # 在所有会话里可见:
+            #   ① 客户端自带(browser-mcp，在 shipped 里)——随包发布，云端管理台不列它，
+            #      拿套件声明去卡它 = 所有 cowork 都失去这个工具(需求 G6)；
+            #   ② 用户在 mcp.json 手工自加的全局 MCP(不属于任何套件的 define)——那是用户
+            #      自己的东西,不该因为"不在随包名单里"就被当成套件下发、进而被某个 agent 的
+            #      mcp.use 卡掉而凭空消失。
+            suite_delivered=server_name not in shipped and _is_suite_defined(server_name),
         )
 
     return wrap
