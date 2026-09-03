@@ -1440,6 +1440,18 @@ async function createWindow() {
     }
   });
 
+  // 鼠标侧键（前进/后退）不许翻页。
+  // Windows 上这两颗键走 WM_APPCOMMAND → Electron 的 'app-command' 事件；默认动作是让
+  // Chromium 对当前 contents 做 back/forward。我们的界面是单文档 SPA、视图全靠 React state，
+  // 一「后退」就把整份文档退回上一次导航（登录跳转 / splash→BACKEND_URL 那一步），表现为
+  // 「本来开着会话，一按侧键就跳回 netlive 首页」，再按一下又回来——纯误触。
+  // 直接吞掉这两条命令。内嵌浏览器(BrowserPanel)有自己的前进/后退按钮，不靠侧键。
+  mainWindow.on('app-command', (e, command) => {
+    if (command === 'browser-backward' || command === 'browser-forward') {
+      e.preventDefault();
+    }
+  });
+
   // Renderer-failure safety net. Without these, a renderer that can't load (e.g.
   // a JS module rejected for a bad Content-Type, or a crashed render process)
   // leaves the splash/blank page up with NO message — the "white screen" report.
